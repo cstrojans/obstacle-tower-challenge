@@ -36,7 +36,12 @@ python3 -m pip install --upgrade pip
 pip install -r requirements.txt
 
 ```
-5. Download the game
+5. Setup jupyter to work with the [virtual environment](https://albertauyeung.github.io/2020/08/17/pyenv-jupyter.html)
+6. By default, the binary will be automatically downloaded when the Obstacle Tower gym is first instantiated. The following line in the Jupyter notebook instantiates the environment:
+```
+env = ObstacleTowerEnv(retro=False, realtime_mode=False)
+```
+7. The binaries for each platform can be separately downloaded at the following links. Using these binaries you can play the game.
 
 | *Platform*     | *Download Link*                                                                     |
 | --- | --- |
@@ -44,11 +49,6 @@ pip install -r requirements.txt
 | Mac OS X       | https://storage.googleapis.com/obstacle-tower-build/v4.1/obstacletower_v4.1_osx.zip     |
 | Windows        | https://storage.googleapis.com/obstacle-tower-build/v4.1/obstacletower_v4.1_windows.zip |
 
-6. (Optional) Setup jupyter to work with the [virtual environment](https://albertauyeung.github.io/2020/08/17/pyenv-jupyter.html)
-7. Run the game
-```bash
-python run.py
-```
 
 ## Game details
 
