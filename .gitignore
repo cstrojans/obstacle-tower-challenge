@@ -1,0 +1,9 @@
+UnitySDK.log
+__pycache__
+.DS_STORE
+
+.ipynb_checkpoints/
+
+venv/
+obstacle-tower-env/
+ObstacleTower/
