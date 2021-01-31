@@ -40,9 +40,9 @@ pip install -r requirements.txt
 
 | *Platform*     | *Download Link*                                                                     |
 | --- | --- |
-| Linux (x86_64) | https://storage.googleapis.com/obstacle-tower-build/v2.2/obstacletower_v2.2_linux.zip   |
-| Mac OS X       | https://storage.googleapis.com/obstacle-tower-build/v2.2/obstacletower_v2.2_osx.zip     |
-| Windows        | https://storage.googleapis.com/obstacle-tower-build/v2.2/obstacletower_v2.2_windows.zip |
+| Linux (x86_64) | https://storage.googleapis.com/obstacle-tower-build/v4.1/obstacletower_v4.1_linux.zip   |
+| Mac OS X       | https://storage.googleapis.com/obstacle-tower-build/v4.1/obstacletower_v4.1_osx.zip     |
+| Windows        | https://storage.googleapis.com/obstacle-tower-build/v4.1/obstacletower_v4.1_windows.zip |
 
 6. (Optional) Setup jupyter to work with the [virtual environment](https://albertauyeung.github.io/2020/08/17/pyenv-jupyter.html)
 7. Run the game
