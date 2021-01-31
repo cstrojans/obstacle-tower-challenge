@@ -1,8 +1,20 @@
-from obstacle_tower_env import ObstacleTowerEnv
+from obstacle_tower_env import ObstacleTowerEnv, ObstacleTowerEvaluation
 import sys
 import argparse
 
 def run_episode(env):
+    """run_episode runs a game by executing a random policy
+
+    Parameters
+    ----------
+    env : ObstacleTowerEnv
+        game environment with OpenAI gym wrapper
+
+    Returns
+    -------
+    float
+        reward earned in the episode
+    """
     done = False
     episode_reward = 0.0
     
@@ -25,8 +37,9 @@ def run_evaluation(env):
         env.reset()
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('environment_filename', default='../../ObstacleTower/obstacletower', nargs='?')
+    parser = argparse.ArgumentParser(description="arguments for playing the OTC game")
+    parser.add_argument('-env', default=None)
+    parser.add_argument('-eval', action='store_true')
     args = parser.parse_args()
 
     # Retro mode sets the visual observation to 84 * 84 and flattens the action space
@@ -34,21 +47,22 @@ if __name__ == '__main__':
     # Realtime mode determines whether the environment window will render the scene,
     # as well as whether the environment will run at realtime speed. Set this to `True`
     # to visual the agent behavior as you would in player mode.
-    env = ObstacleTowerEnv(args.environment_filename, retro=False, realtime_mode=False)
+    env = ObstacleTowerEnv(args.env, retro=False, realtime_mode=False)
 
-    # set fixed seed for random number generator [0, 100)
-    env.seed(10)
+    if args.eval:
+        eval_seeds = [1001]
+        env.reset()
+        env = ObstacleTowerEvaluation(env, eval_seeds)
 
-    # set a fixed floor number to start from subserquent resets
-    env.floor(1)
+        # run episodes until evaluation is complete
+        while not env.evaluation_complete:
+            episode_rew = run_episode(env)
 
-    if env.is_grading():
-        episode_reward = run_evaluation(env)
+        print(env.results)
+        env.close()
+
     else:
-        while True:
-            episode_reward = run_episode(env)
-            print("Episode reward: " + str(episode_reward))
-            env.reset()
+        episode_reward = run_episode(env)
+        print("Episode reward: " + str(episode_reward))
 
-    env.close()
-
+        env.close()
