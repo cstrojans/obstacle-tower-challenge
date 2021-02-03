@@ -59,3 +59,17 @@ The environment provided has a MultiDiscrete action space (list of valid actions
 3. Movement (No-Op/Right/Left)
 
 The observation space provided includes a 168x168 image (the camera from the simulation) as well as the number of keys held by the agent (0-5) and the amount of time remaining.
+
+## Usage
+```bash
+cd src/
+
+# play an episode of the game using a given policy
+python play.py -env <PATH_TO_OTC_GAME> -policy random
+
+# evaluate a given policy
+python play.py -env <PATH_TO_OTC_GAME> -policy random -eval
+
+# train an agent
+
+```
