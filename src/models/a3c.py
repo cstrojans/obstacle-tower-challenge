@@ -85,7 +85,6 @@ class MasterAgent():
 
         # TODO: replace optimizer with tf.keras.optimizers
         self.opt = tf.compat.v1.train.AdamOptimizer(lr, use_locking=True)
-        print(self.state_size, self.action_size, self.input_shape)
 
         # global network
         self.global_model = ActorCriticModel(self.state_size, self.action_size, self.input_shape)
@@ -98,6 +97,7 @@ class MasterAgent():
         # vec = np.moveaxis(vec, 2, 0) # convert from channls last to channels first -> (3, 84, 84)
         self.global_model(tf.convert_to_tensor(vec, dtype=tf.float32))
         print(self.global_model.summary())
+        # tf.keras.utils.plot_model(self.global_model, to_file=save_dir + 'model_architecture.png', show_shapes=True)
 
     def train(self):
         res_queue = Queue()
@@ -201,6 +201,7 @@ class Worker(threading.Thread):
         mem = Memory()
         while Worker.global_episode < self.max_eps:
             current_state = self.env.reset() # (84, 84, 3)
+            # print("Current state: {}".format(current_state))
             # current_state = np.moveaxis(current_state, 2, 0) # convert from channls last to channels first -> (3, 84, 84)
             mem.clear()
             ep_reward = 0.
@@ -266,9 +267,7 @@ class Worker(threading.Thread):
         if done:
             reward_sum = 0.  # terminal
         else:
-            new_state = new_state[None, :]
-            new_state = np.expand_dims(new_state, axis=0) # (1, 84, 84, 3)
-            reward_sum = self.local_model(tf.convert_to_tensor(new_state, dtype=tf.float32))[-1].numpy()[0]
+            reward_sum = self.local_model(tf.convert_to_tensor(np.expand_dims(new_state, axis=0), dtype=tf.float32))[-1].numpy()[0]
 
         # Get discounted rewards
         discounted_rewards = []
@@ -278,7 +277,7 @@ class Worker(threading.Thread):
         discounted_rewards.reverse()
         # TODO: try to normalize the discounted rewards
 
-        logits, values = self.local_model(tf.convert_to_tensor(np.vstack(memory.states), dtype=tf.float32))
+        logits, values = self.local_model(tf.convert_to_tensor(np.stack(memory.states), dtype=tf.float32))
         
         # Get our advantages
         q_value_estimate = tf.convert_to_tensor(np.array(discounted_rewards)[:, None], dtype=tf.float32)
@@ -288,26 +287,18 @@ class Worker(threading.Thread):
         value_loss = advantage ** 2
 
         # Calculate our policy loss
-
-        # policy = tf.nn.softmax(logits)
-        # entropy = tf.nn.softmax_cross_entropy_with_logits(labels=policy, logits=logits)
-
-        # policy_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=memory.actions, logits=logits)
-        # policy_loss *= tf.stop_gradient(advantage)
-        # policy_loss -= 0.01 * entropy
-        # total_loss = tf.reduce_mean((0.5 * value_loss + policy_loss))
-
-        # return total_loss
-
         actions_one_hot = tf.one_hot(memory.actions, self.action_size, dtype=tf.float32)
 
         policy = tf.nn.softmax(logits)
-        entropy = tf.reduce_sum(policy * tf.log(policy + 1e-20), axis=1)
+        # entropy = tf.nn.softmax_cross_entropy_with_logits(labels=policy, logits=logits)
+        entropy = tf.reduce_sum(policy * tf.math.log(policy + 1e-20), axis=1)
 
-        policy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(labels=actions_one_hot, logits=logits)
+        # policy_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=memory.actions, logits=logits)
+        policy_loss = tf.compat.v1.nn.softmax_cross_entropy_with_logits_v2(labels=actions_one_hot, logits=logits)
         policy_loss *= tf.stop_gradient(advantage)
         policy_loss -= 0.01 * entropy
 
+        # total_loss = tf.reduce_mean((0.5 * value_loss + policy_loss))
         total_loss = tf.reduce_mean((0.5 * value_loss + policy_loss))
 
         return total_loss

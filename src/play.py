@@ -27,9 +27,9 @@ def run_evaluation(env):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="arguments for playing the OTC game")
-    parser.add_argument('-env', default=None)
-    parser.add_argument('-eval', action='store_true')
-    parser.add_argument('-policy', type=str, default='random')
+    parser.add_argument('--env', default=None)
+    parser.add_argument('--eval', action='store_true')
+    parser.add_argument('--policy', type=str, default='random')
     args = parser.parse_args()
 
     # instantiate the game environment
