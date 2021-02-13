@@ -9,7 +9,7 @@ from tensorflow.python import keras
 from tensorflow.python.keras import layers
 import threading
 
-from models.util import record
+from models.util import *
 
 
 matplotlib.use('agg')
@@ -39,7 +39,7 @@ class ActorCriticModel(keras.Model):
         # TODO: LSTM - temporal dependencies
         # self.lstm1 = layers.LSTM(units=256, return_sequences=False)
         """
-
+        
         # common network with shared parameters
         # (20, 20, 16)
         self.conv1 = layers.Conv2D(filters=16, kernel_size=(8, 8), strides=(
@@ -70,7 +70,7 @@ class ActorCriticModel(keras.Model):
 
 
 class MasterAgent():
-    def __init__(self, env, lr, max_eps, update_freq, gamma, num_workers, save_dir):
+    def __init__(self, env=None, lr=0.001, max_eps=10, update_freq=20, gamma=0.99, num_workers=1, save_dir='./model_files/'):
         self.game_name = 'OTC-v4.1'
         self.save_dir = save_dir
         if not os.path.exists(save_dir):
@@ -82,6 +82,7 @@ class MasterAgent():
         self.update_freq = update_freq
         self.gamma = gamma
         self.num_workers = num_workers
+        self.model_path = os.path.join(self.save_dir, 'model_a3c')
 
         # TODO: check the syntax for our game with retro=False
         self.state_size = env.observation_space.shape[0]  # 84
@@ -89,6 +90,7 @@ class MasterAgent():
         self.input_shape = env.observation_space.shape  # (84, 84, 3)
 
         # TODO: replace optimizer with tf.keras.optimizers
+        # TODO: try RMSProp optimizer instead of Adam
         self.opt = tf.compat.v1.train.AdamOptimizer(lr, use_locking=True)
 
         # global network
@@ -101,6 +103,13 @@ class MasterAgent():
         self.global_model(tf.convert_to_tensor(vec, dtype=tf.float32))
         print(self.global_model.summary())
         # tf.keras.utils.plot_model(self.global_model, to_file=save_dir + 'model_architecture.png', show_shapes=True)
+
+        tf.keras.utils.plot_model(self.build_graph(), to_file=os.path.join(
+            self.save_dir, 'model_a3c_architecture.png'), dpi=96, show_shapes=True, show_layer_names=True, expand_nested=False)
+
+    def build_graph(self):
+        x = tf.keras.Input(shape=(84, 84, 3))
+        return tf.keras.Model(inputs=[x], outputs=self.global_model.call(x))
 
     def train(self):
         res_queue = Queue()
@@ -125,20 +134,20 @@ class MasterAgent():
         plt.ylabel('Moving average episode reward')
         plt.xlabel('Step')
         plt.savefig(os.path.join(self.save_dir,
-                                 '{} Moving Average.png'.format(self.game_name)))
-        # plt.show()
+                                 'model_a3c_moving_average.png'))
+
+        # save the trained model to a file
+        print('Saving model to: {}'.format(self.model_path))
+        tf.keras.models.save_model(self.global_model, self.model_path)
 
     def play(self):
-        state = self.env.reset()  # (84, 84, 3)
-        state = np.expand_dims(state, axis=0)  # (1, 84, 84, 3)
-        model = self.global_model
-        model_path = os.path.join(
-            self.save_dir, 'model_{}.h5'.format(self.game_name))
-        print('Loading model from: {}'.format(model_path))
-        model.load_weights(model_path)
+        action_space = ActionSpace()
+        print('Loading model from: {}'.format(self.model_path))
+        model = tf.keras.models.load_model(self.model_path)
         done = False
         step_counter = 0
         reward_sum = 0
+        state = self.env.reset()
 
         try:
             while not done:
@@ -184,7 +193,7 @@ class Worker(threading.Thread):
     save_lock = threading.Lock()
 
     def __init__(self, state_size, action_size, global_model, opt, result_queue, idx, env, max_eps,
-                 update_freq, gamma, input_shape, game_name='OTC-v4.1', save_dir='/tmp'):
+                 update_freq, gamma, input_shape, game_name='OTC-v4.1', save_dir='./model_files/'):
         super(Worker, self).__init__()
         self.state_size = state_size
         self.action_size = action_size
@@ -208,7 +217,7 @@ class Worker(threading.Thread):
         total_step = 1
         mem = Memory()
         while Worker.global_episode < self.max_eps:
-            current_state = self.env.reset()  # (84, 84, 3)
+            current_state = self.env.reset()
             mem.clear()
             ep_reward = 0.
             ep_steps = 0
@@ -217,7 +226,7 @@ class Worker(threading.Thread):
             time_count = 0
             done = False
             while not done:
-                # perform the forward pass
+                # get action as per the policy
                 logits, _ = self.local_model(tf.convert_to_tensor(
                     np.expand_dims(current_state, axis=0), dtype=tf.float32))
                 probs = tf.nn.softmax(logits)
@@ -231,22 +240,22 @@ class Worker(threading.Thread):
                 mem.store(current_state, action, reward)
 
                 if time_count == self.update_freq or done:
-                    # Calculate gradient wrt to local model
+                    # calculate gradient wrt to local model
                     with tf.GradientTape() as tape:
                         total_loss = self.compute_loss(
                             done, new_state, mem, self.gamma)
 
                     self.ep_loss += total_loss
 
-                    # Calculate local gradients
+                    # calculate local gradients
                     grads = tape.gradient(
                         total_loss, self.local_model.trainable_variables)
 
-                    # Push local gradients to global model
+                    # send local gradients to global model
                     self.opt.apply_gradients(
                         zip(grads, self.global_model.trainable_variables))
 
-                    # Update local model with new weights
+                    # update local model with new weights
                     self.local_model.set_weights(
                         self.global_model.get_weights())
 
@@ -258,10 +267,10 @@ class Worker(threading.Thread):
                             record(Worker.global_episode, ep_reward, self.worker_idx,
                                    Worker.global_moving_average_reward, self.result_queue, self.ep_loss, ep_steps)
 
-                        # use a lock to save our model and to print to prevent data races.
+                        # use a lock to save local model and to print to prevent data races.
                         if ep_reward > Worker.best_score:
                             with Worker.save_lock:
-                                print("Saving best model to {}, episode score: {}".format(
+                                print("\nSaving best model to {}, episode score: {}\n".format(
                                     self.save_dir, ep_reward))
                                 self.global_model.save_weights(os.path.join(
                                     self.save_dir, 'model_{}.h5'.format(self.game_name)))
@@ -275,8 +284,8 @@ class Worker(threading.Thread):
         self.result_queue.put(None)
 
     def compute_loss(self, done, new_state, memory, gamma=0.99):
-        if done:
-            reward_sum = 0.  # terminal
+        if done: # game has terminated
+            reward_sum = 0.
         else:
             reward_sum = self.local_model(tf.convert_to_tensor(
                 np.expand_dims(new_state, axis=0), dtype=tf.float32))[-1].numpy()[0]
@@ -292,15 +301,15 @@ class Worker(threading.Thread):
         logits, values = self.local_model(tf.convert_to_tensor(
             np.stack(memory.states), dtype=tf.float32))
 
-        # Get our advantages
+        # get our advantages
         q_value_estimate = tf.convert_to_tensor(
             np.array(discounted_rewards)[:, None], dtype=tf.float32)
         advantage = q_value_estimate - values
 
-        # Value loss
+        # value loss
         value_loss = advantage ** 2
 
-        # Calculate our policy loss
+        # policy loss
         actions_one_hot = tf.one_hot(
             memory.actions, self.action_size, dtype=tf.float32)
 
