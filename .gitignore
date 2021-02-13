@@ -7,3 +7,4 @@ __pycache__
 venv/
 obstacle-tower-env/
 ObstacleTower/
+model_files/

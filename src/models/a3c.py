@@ -121,7 +121,8 @@ class MasterAgent():
             print("Starting worker {}".format(i))
             worker.start()
 
-        moving_average_rewards = []  # record episode reward to plot
+        # record episode reward to plot
+        moving_average_rewards = []
         while True:
             reward = res_queue.get()
             if reward is not None:
@@ -151,20 +152,19 @@ class MasterAgent():
 
         try:
             while not done:
-                env.render(mode='rgb_array')
-                policy, value = model(
-                    tf.convert_to_tensor(state, dtype=tf.float32))
+                policy, value = model(tf.convert_to_tensor(
+                    np.expand_dims(state, axis=0), dtype=tf.float32))
                 policy = tf.nn.softmax(policy)
                 action = np.argmax(policy)
-                state, reward, done, _ = env.step(action)
+                state, reward, done, _ = self.env.step(action)
                 reward_sum += reward
                 print("{}. Reward: {}, action: {}".format(
-                    step_counter, reward_sum, action))
+                    step_counter, reward_sum, action_space.get_action_meaning(action)))
                 step_counter += 1
         except KeyboardInterrupt:
             print("Received Keyboard Interrupt. Shutting down.")
         finally:
-            env.close()
+            return reward_sum
 
 
 class Memory:

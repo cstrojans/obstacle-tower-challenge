@@ -1,3 +1,52 @@
+import itertools
+
+
+class ActionSpace:
+    def __init__(self):
+        """__init__ gets the meaning of action in a multi-discrete space from a scalar space
+        The environment provided has a MultiDiscrete action space, where the 4 dimensions are:
+        0. Movement (No-Op/Forward/Back)
+        1. Camera Rotation (No-Op/Counter-Clockwise/Clockwise)
+        2. Jump (No-Op/Jump)
+        3. Movement (No-Op/Right/Left)
+        """
+        self._branched_action_space = [3, 3, 2, 3]
+        self._possible_vals = [range(_num)
+                               for _num in self._branched_action_space]
+        self.all_actions = [
+            list(_action) for _action in itertools.product(*self._possible_vals)]
+        self.actions = [
+            {  # movement
+                0: "no-op",
+                1: "forward",
+                2: "backward"
+            },
+            {  # camera_rotation
+                0: "no-op",
+                1: "counter-clockwise",
+                2: "clockwise"
+            },
+            {  # Jump
+                0: "no-op",
+                1: "jump"
+            },
+            {  # movement
+                0: "no-op",
+                1: "right",
+                2: "left"
+            }
+        ]
+
+    def get_action_meaning(self, action):
+        action_permutation = self.all_actions[action]
+        return "[{}, {}, {}, {}]".format(
+            self.actions[0][action_permutation[0]],
+            self.actions[1][action_permutation[1]],
+            self.actions[2][action_permutation[2]],
+            self.actions[3][action_permutation[3]]
+        )
+
+
 def record(episode, episode_reward, worker_idx, global_ep_reward, result_queue, total_loss, num_steps):
     """Helper function to store score and print statistics.
     Args:
