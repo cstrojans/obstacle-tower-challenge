@@ -1,56 +1,44 @@
 from obstacle_tower_env import ObstacleTowerEnv, ObstacleTowerEvaluation
 import sys
 import argparse
-from models.random import RandomPolicy
-
-def run_episode(env, agent_brain):
-    done = False
-    episode_reward = 0.0
-    
-    obs = env.reset()
-    while not done:
-        # TODO: get next action from agent's policy
-        action = agent_brain.predict(obs)
-
-        # perform the action on the environment
-        obs, reward, done, info = env.step(action)
-
-        # update cumulative reward
-        episode_reward += reward
-        
-    return episode_reward
-
-def run_evaluation(env):
-    while not env.done_grading():
-        run_episode(env)
+from models.random import RandomAgent
+from models.a3c import MasterAgent
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="arguments for playing the OTC game")
+    parser = argparse.ArgumentParser(
+        description="arguments for playing the OTC game")
     parser.add_argument('--env', default=None)
     parser.add_argument('--eval', action='store_true')
-    parser.add_argument('--policy', type=str, default='random')
+    parser.add_argument('--algorithm', type=str, default='a3c')
+    parser.add_argument('--save-dir', default='./model_files/', type=str,
+                        help='Directory from where you wish to load the model.')
     args = parser.parse_args()
+    print(args)
 
     # instantiate the game environment
-    env = ObstacleTowerEnv(args.env, retro=False, realtime_mode=False)
+    if args.eval:
+        env = ObstacleTowerEnv(args.env, retro=True, realtime_mode=False)
+    else:
+        env = ObstacleTowerEnv(args.env, retro=True, realtime_mode=True)
 
-    # TODO: load trained model based on policy
-    if args.policy == 'random':
-        agent_brain = RandomPolicy(env)
+    if args.algorithm == 'random':
+        model = RandomAgent(env=env, save_dir=args.save_dir)
+    elif args.algorithm == 'a3c':
+        model = MasterAgent(env=env, save_dir=args.save_dir)
 
     if args.eval:
-        eval_seeds = [1001]
+        eval_seeds = [1001, 1002, 1003, 1004, 1005]
         env = ObstacleTowerEvaluation(env, eval_seeds)
 
         # run episodes until evaluation is complete
         while not env.evaluation_complete:
-            episode_rew = run_episode(env, agent_brain)
+            episode_reward = model.play()
 
         print(env.results)
 
     else:
-        episode_reward = run_episode(env, agent_brain)
+        episode_reward = model.play()
         print("Episode reward: " + str(episode_reward))
 
     env.close()

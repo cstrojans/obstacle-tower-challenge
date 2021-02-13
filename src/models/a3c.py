@@ -11,7 +11,6 @@ import threading
 
 from models.util import *
 
-
 matplotlib.use('agg')
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
@@ -99,10 +98,7 @@ class MasterAgent():
 
         vec = np.random.random(self.input_shape)  # (84, 84, 3)
         vec = np.expand_dims(vec, axis=0)  # (1, 84, 84, 3)
-        print("Input shape of image in global model: ", vec.shape)
         self.global_model(tf.convert_to_tensor(vec, dtype=tf.float32))
-        print(self.global_model.summary())
-        # tf.keras.utils.plot_model(self.global_model, to_file=save_dir + 'model_architecture.png', show_shapes=True)
 
         tf.keras.utils.plot_model(self.build_graph(), to_file=os.path.join(
             self.save_dir, 'model_a3c_architecture.png'), dpi=96, show_shapes=True, show_layer_names=True, expand_nested=False)
@@ -185,9 +181,7 @@ class Memory:
 
 
 class Worker(threading.Thread):
-    # Set up global variables across different threads
     global_episode = 0
-    # Moving average reward
     global_moving_average_reward = 0
     best_score = 0
     save_lock = threading.Lock()
