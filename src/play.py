@@ -17,10 +17,14 @@ if __name__ == '__main__':
     print(args)
 
     # instantiate the game environment
+    env_reset_config = {
+        "visual-theme": 0,
+        "agent-perspective": 0
+    }
     if args.eval:
-        env = ObstacleTowerEnv(args.env, retro=True, realtime_mode=False)
+        env = ObstacleTowerEnv(args.env, retro=True, realtime_mode=False, config=env_reset_config)
     else:
-        env = ObstacleTowerEnv(args.env, retro=True, realtime_mode=True)
+        env = ObstacleTowerEnv(args.env, retro=True, realtime_mode=True, config=env_reset_config)
 
     if args.algorithm == 'random':
         model = RandomAgent(env=env, save_dir=args.save_dir)

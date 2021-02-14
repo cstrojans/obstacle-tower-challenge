@@ -46,7 +46,8 @@ class ActorCriticModel(keras.Model):
         # (9, 9, 32)
         self.conv2 = layers.Conv2D(filters=32, kernel_size=(4, 4), strides=(
             2, 2), padding='same', activation='relu', data_format='channels_last')
-        self.flatten = layers.Flatten()  # (9 * 9 * 32)
+        # (9 * 9 * 32)
+        self.flatten = layers.Flatten()
         self.dense1 = layers.Dense(units=256, activation='relu')
 
         # policy output layer (Actor)
@@ -140,7 +141,7 @@ class MasterAgent():
     def play(self):
         action_space = ActionSpace()
         print('Loading model from: {}'.format(self.model_path))
-        model = tf.keras.models.load_model(self.model_path)
+        model = tf.keras.models.load_model(self.model_path, compile=False)
         done = False
         step_counter = 0
         reward_sum = 0
@@ -202,6 +203,7 @@ class Worker(threading.Thread):
 
         self.env = env
         self.save_dir = save_dir
+        self.model_path = os.path.join(self.save_dir, 'model_a3c_local')
         self.ep_loss = 0.0
         self.max_eps = max_eps
         self.update_freq = update_freq
@@ -264,27 +266,33 @@ class Worker(threading.Thread):
                         # use a lock to save local model and to print to prevent data races.
                         if ep_reward > Worker.best_score:
                             with Worker.save_lock:
-                                print("\nSaving best model to {}, episode score: {}\n".format(
-                                    self.save_dir, ep_reward))
-                                self.global_model.save_weights(os.path.join(
-                                    self.save_dir, 'model_{}.h5'.format(self.game_name)))
+                                print('\nSaving best model to: {}, episode score: {}\n'.format(
+                                    self.model_path, ep_reward))
+                                tf.keras.models.save_model(
+                                    self.global_model, self.model_path)
+
                                 Worker.best_score = ep_reward
                         Worker.global_episode += 1
+
                 ep_steps += 1
 
                 time_count += 1
                 current_state = new_state
                 total_step += 1
+
         self.result_queue.put(None)
 
     def compute_loss(self, done, new_state, memory, gamma=0.99):
-        if done: # game has terminated
+        beta_regularizer = 0.01
+
+        if done:  # game has terminated
             reward_sum = 0.
         else:
             reward_sum = self.local_model(tf.convert_to_tensor(
                 np.expand_dims(new_state, axis=0), dtype=tf.float32))[-1].numpy()[0]
 
         # Get discounted rewards
+        # TODO: try to normalize the discounted rewards
         discounted_rewards = []
         for reward in memory.rewards[::-1]:  # reverse buffer r
             reward_sum = reward + gamma * reward_sum
@@ -308,14 +316,16 @@ class Worker(threading.Thread):
             memory.actions, self.action_size, dtype=tf.float32)
 
         policy = tf.nn.softmax(logits)
-        # entropy = tf.nn.softmax_cross_entropy_with_logits(labels=policy, logits=logits)
-        entropy = tf.reduce_sum(policy * tf.math.log(policy + 1e-20), axis=1)
+        entropy = tf.nn.softmax_cross_entropy_with_logits(
+            labels=policy, logits=logits)
+        # entropy = tf.reduce_sum(policy * tf.math.log(policy + 1e-20), axis=1)
 
-        # policy_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=memory.actions, logits=logits)
-        policy_loss = tf.compat.v1.nn.softmax_cross_entropy_with_logits_v2(
-            labels=actions_one_hot, logits=logits)
+        policy_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+            labels=memory.actions, logits=logits)
+        # policy_loss = tf.compat.v1.nn.softmax_cross_entropy_with_logits_v2(
+        #     labels=actions_one_hot, logits=logits)
         policy_loss *= tf.stop_gradient(advantage)
-        policy_loss -= 0.01 * entropy
+        policy_loss -= beta_regularizer * entropy
 
         # total_loss = tf.reduce_mean((0.5 * value_loss + policy_loss))
         total_loss = tf.reduce_mean((0.5 * value_loss + policy_loss))
