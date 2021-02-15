@@ -1,15 +1,20 @@
 import gym
 import matplotlib
 import matplotlib.pyplot as plt
+import multiprocessing
 import numpy as np
+from obstacle_tower_env import ObstacleTowerEnv, ObstacleTowerEvaluation
 import os
+from prettyprinter import pprint
 from queue import Queue
 import tensorflow as tf
 from tensorflow.python import keras
 from tensorflow.python.keras import layers
 import threading
+import time
 
 from models.util import *
+from definitions import *
 
 matplotlib.use('agg')
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
@@ -70,7 +75,7 @@ class ActorCriticModel(keras.Model):
 
 
 class MasterAgent():
-    def __init__(self, env=None, lr=0.001, max_eps=10, update_freq=20, gamma=0.99, num_workers=1, save_dir='./model_files/'):
+    def __init__(self, env_path=None, train=False, evaluate=False, eval_seeds=[], lr=0.001, max_eps=10, update_freq=20, gamma=0.99, num_workers=0, save_dir='./model_files/'):
         self.game_name = 'OTC-v4.1'
         self.save_dir = save_dir
         if not os.path.exists(save_dir):
@@ -109,12 +114,14 @@ class MasterAgent():
         return tf.keras.Model(inputs=[x], outputs=self.global_model.call(x))
 
     def train(self):
+        start_time = time.time()
+        
         res_queue = Queue()
 
-        workers = [Worker(self.state_size, self.action_size, self.global_model, self.opt, res_queue, i,
-                          self.env, self.max_eps, self.update_freq, self.gamma, self.input_shape, save_dir=self.save_dir) for i in range(self.num_workers)]
+        workers = [Worker(self.state_size, self.action_size, self.global_model, self.opt, res_queue, worker_id, self.env_path, self.max_eps,
+                          self.update_freq, self.gamma, self.input_shape, save_dir=self.save_dir) for worker_id in range(1, self.num_workers+1)]
 
-        for i, worker in enumerate(workers):
+        for i, worker in enumerate(workers, start=1):
             print("Starting worker {}".format(i))
             worker.start()
 
@@ -126,7 +133,11 @@ class MasterAgent():
                 moving_average_rewards.append(reward)
             else:
                 break
-        [w.join() for w in workers]
+        for w in workers:
+            w.join()
+
+        end_time = time.time()
+        print("\nTraining complete. Time taken = {} secs".format(end_time - start_time))
 
         plt.plot(moving_average_rewards)
         plt.ylabel('Moving average episode reward')
@@ -137,11 +148,13 @@ class MasterAgent():
         # save the trained model to a file
         print('Saving model to: {}'.format(self.model_path))
         tf.keras.models.save_model(self.global_model, self.model_path)
+        self.env.close()
 
-    def play(self):
+    def play_single_episode(self):
         action_space = ActionSpace()
         print('Loading model from: {}'.format(self.model_path))
         model = tf.keras.models.load_model(self.model_path, compile=False)
+        print("Playing single episode...")
         done = False
         step_counter = 0
         reward_sum = 0
@@ -161,7 +174,17 @@ class MasterAgent():
         except KeyboardInterrupt:
             print("Received Keyboard Interrupt. Shutting down.")
         finally:
+            if not self.evaluate:
+                self.env.close()
             return reward_sum
+    
+    def evaluate(self):
+        # run episodes until evaluation is complete
+        while not self.env.evaluation_complete:
+            episode_reward = self.play_single_episode()
+
+        pprint(self.env.results)
+        self.env.close()
 
 
 class Memory:
@@ -187,7 +210,7 @@ class Worker(threading.Thread):
     best_score = 0
     save_lock = threading.Lock()
 
-    def __init__(self, state_size, action_size, global_model, opt, result_queue, idx, env, max_eps,
+    def __init__(self, state_size, action_size, global_model, opt, result_queue, idx, env_path, max_eps,
                  update_freq, gamma, input_shape, game_name='OTC-v4.1', save_dir='./model_files/'):
         super(Worker, self).__init__()
         self.state_size = state_size
@@ -200,8 +223,7 @@ class Worker(threading.Thread):
             self.state_size, self.action_size, self.input_shape)
         self.worker_idx = idx
         self.game_name = game_name
-
-        self.env = env
+        self.env = ObstacleTowerEnv(env_path, worker_id=self.worker_idx, retro=True, realtime_mode=False, config=train_env_reset_config)
         self.save_dir = save_dir
         self.model_path = os.path.join(self.save_dir, 'model_a3c_local')
         self.ep_loss = 0.0
@@ -281,6 +303,7 @@ class Worker(threading.Thread):
                 total_step += 1
 
         self.result_queue.put(None)
+        self.env.close()
 
     def compute_loss(self, done, new_state, memory, gamma=0.99):
         beta_regularizer = 0.01
