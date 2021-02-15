@@ -81,18 +81,32 @@ class MasterAgent():
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
 
-        self.env = env
+        self.env_path = env_path
+        if train:
+            self.env = ObstacleTowerEnv(
+                env_path, worker_id=0, retro=True, realtime_mode=False, config=train_env_reset_config)
+        else:
+            if evaluate:
+                self.env = ObstacleTowerEnv(
+                    env_path, worker_id=0, retro=True, realtime_mode=False, config=eval_env_reset_config)
+                self.env = ObstacleTowerEvaluation(self.env, eval_seeds)
+            else:
+                self.env = ObstacleTowerEnv(
+                    env_path, worker_id=0, retro=True, realtime_mode=True, config=eval_env_reset_config)
         self.lr = lr
         self.max_eps = max_eps
         self.update_freq = update_freq
         self.gamma = gamma
-        self.num_workers = num_workers
+        if num_workers == 0:
+            self.num_workers = multiprocessing.cpu_count()
+        else:
+            self.num_workers = num_workers
         self.model_path = os.path.join(self.save_dir, 'model_a3c')
 
         # TODO: check the syntax for our game with retro=False
-        self.state_size = env.observation_space.shape[0]  # 84
-        self.action_size = env.action_space.n  # 54
-        self.input_shape = env.observation_space.shape  # (84, 84, 3)
+        self.state_size = self.env.observation_space.shape[0]  # 84
+        self.action_size = self.env.action_space.n  # 54
+        self.input_shape = self.env.observation_space.shape  # (84, 84, 3)
 
         # TODO: replace optimizer with tf.keras.optimizers
         # TODO: try RMSProp optimizer instead of Adam
