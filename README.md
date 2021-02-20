@@ -62,12 +62,13 @@ The observation space provided includes a 168x168 image (the camera from the sim
 
 ## Usage
 ```bash
-# play an episode of the game using a given policy
-python play.py --env <PATH_TO_OTC_GAME> --policy random
+# train an A3C agent
+python src/train.py --env <PATH_TO_OTC_GAME> --train --algorithm a3c --num_workers 2
+
+# play an episode of the game using a given policy (random or a3c)
+python src/play.py --env <PATH_TO_OTC_GAME> --policy random
 
 # evaluate a given policy
-python play.py --env <PATH_TO_OTC_GAME> --policy random --eval
+python play.py --env <PATH_TO_OTC_GAME> --policy random --evaluate
 
-# train an agent
-python src/train.py --env <PATH_TO_OTC_GAME> --num_workers 1
 ```
