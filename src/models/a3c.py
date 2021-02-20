@@ -14,104 +14,14 @@ from tensorflow.python.keras import layers
 import threading
 import time
 
-from models.util import *
+from models.architecture.cnn import CNN
+from models.architecture.gru import CnnGru
+from models.util import ActionSpace, Memory
+from models.util import record
 from definitions import *
 
 matplotlib.use('agg')
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
-
-
-class ActorCriticModel(keras.Model):
-    def __init__(self, state_size, action_size, ip_shape=(84, 84, 3)):
-        super(ActorCriticModel, self).__init__()
-        self.state_size = state_size
-        self.action_size = action_size
-        self.ip_shape = ip_shape
-
-        # common network with shared parameters
-        # (20, 20, 16)
-        self.conv1 = layers.Conv2D(filters=16, kernel_size=(8, 8), strides=(
-            4, 4), padding='same', activation='relu', data_format='channels_last', input_shape=self.ip_shape)
-        # (9, 9, 32)
-        self.conv2 = layers.Conv2D(filters=32, kernel_size=(4, 4), strides=(
-            2, 2), padding='same', activation='relu', data_format='channels_last')
-        # (9 * 9 * 32)
-        self.flatten = layers.Flatten()
-        self.dense1 = layers.Dense(units=256, activation='relu')
-
-        # policy output layer (Actor)
-        self.policy_logits = layers.Dense(
-            self.action_size, name='policy_logits')
-
-        # value output layer (Critic)
-        self.values = layers.Dense(units=1, name='value')
-
-    def call(self, inputs):
-        x = self.conv1(inputs)
-        x = self.conv2(x)
-        x = self.flatten(x)
-        x = self.dense1(x)
-
-        logits = self.policy_logits(x)
-        values = self.values(x)
-
-        return logits, values
-
-
-class ActorCriticModelTwo(keras.Model):
-    def __init__(self, state_size, action_size, ip_shape=(84, 84, 3)):
-        super(ActorCriticModelTwo, self).__init__()
-        self.state_size = state_size
-        self.action_size = action_size
-        self.ip_shape = ip_shape
-
-        # CNN - spatial dependencies
-        # (20, 20, 32)
-        self.conv1 = layers.Conv2D(filters=32, kernel_size=(8, 8), strides=(4, 4), padding='same', activation=lambda x: tf.nn.leaky_relu(
-            x, alpha=0.01), data_format='channels_last', input_shape=self.ip_shape)
-
-        # (9, 9, 64)
-        self.conv2 = layers.Conv2D(filters=64, kernel_size=(4, 4), strides=(
-            2, 2), padding='same', activation=lambda x: tf.nn.leaky_relu(x, alpha=0.01), data_format='channels_last')
-
-        # (7, 7, 64)
-        self.conv3 = layers.Conv2D(filters=64, kernel_size=(3, 3), strides=(
-            1, 1), padding='same', activation=lambda x: tf.nn.leaky_relu(x, alpha=0.01), data_format='channels_last')
-
-        # reshape
-        self.flatten = layers.Flatten()
-        self.fc1 = layers.Dense(
-            units=512, activation=lambda x: tf.nn.leaky_relu(x, alpha=0.01))
-
-        # RNN - temporal dependencies
-        # input: [batch, timesteps, feature]
-        self.gru = layers.GRU(512)
-
-        # policy output layer (Actor)
-        self.policy_logits = layers.Dense(
-            self.action_size, name='policy_logits')
-
-        # value output layer (Critic)
-        self.values = layers.Dense(units=1, name='value')
-
-    def call(self, inputs):
-        # converts RGB image to grayscale
-        x = tf.image.rgb_to_grayscale(inputs)
-        # x = tf.image.per_image_standardization(x)
-        x = self.conv1(x)
-        x = self.conv2(x)
-        x = self.conv3(x)
-
-        x = self.flatten(x)
-        x = self.fc1(x)
-
-        x = tf.expand_dims(x, axis=0)
-        x = self.gru(x)
-
-        logits = self.policy_logits(x)
-        values = self.values(x)
-
-        return logits, values
 
 
 class MasterAgent():
@@ -144,7 +54,6 @@ class MasterAgent():
         self.model_path = os.path.join(self.save_dir, 'model_a3c')
 
         # TODO: check the syntax for our game with retro=False
-        self.state_size = self.env.observation_space.shape[0]  # 84
         self.action_size = self.env.action_space.n  # 54
         self.input_shape = self.env.observation_space.shape  # (84, 84, 3)
 
@@ -152,10 +61,8 @@ class MasterAgent():
         self.opt = tf.compat.v1.train.AdamOptimizer(lr, use_locking=True)
 
         # global network
-        # self.global_model = ActorCriticModel(
-        #     self.state_size, self.action_size, self.input_shape)
-        self.global_model = ActorCriticModelTwo(
-            self.state_size, self.action_size, self.input_shape)
+        # self.global_model = CNN(self.action_size, self.input_shape)
+        self.global_model = CnnGru(self.action_size, self.input_shape)
 
         vec = np.random.random(self.input_shape)  # (84, 84, 3)
         vec = np.expand_dims(vec, axis=0)  # (1, 84, 84, 3)
@@ -173,7 +80,7 @@ class MasterAgent():
 
         res_queue = Queue()
 
-        workers = [Worker(self.state_size, self.action_size, self.global_model, self.opt, res_queue, worker_id, self.env_path, self.max_eps,
+        workers = [Worker(self.action_size, self.global_model, self.opt, res_queue, worker_id, self.env_path, self.max_eps,
                           self.update_freq, self.gamma, self.input_shape, save_dir=self.save_dir) for worker_id in range(1, self.num_workers+1)]
 
         for i, worker in enumerate(workers, start=1):
@@ -243,42 +150,22 @@ class MasterAgent():
         self.env.close()
 
 
-class Memory:
-    def __init__(self):
-        self.states = []
-        self.actions = []
-        self.rewards = []
-
-    def store(self, state, action, reward):
-        self.states.append(state)
-        self.actions.append(action)
-        self.rewards.append(reward)
-
-    def clear(self):
-        self.states = []
-        self.actions = []
-        self.rewards = []
-
-
 class Worker(threading.Thread):
     global_episode = 0
     global_moving_average_reward = 0
     best_score = 0
     save_lock = threading.Lock()
 
-    def __init__(self, state_size, action_size, global_model, opt, result_queue, idx, env_path, max_eps,
+    def __init__(self, action_size, global_model, opt, result_queue, idx, env_path, max_eps,
                  update_freq, gamma, input_shape, game_name='OTC-v4.1', save_dir='./model_files/'):
         super(Worker, self).__init__()
-        self.state_size = state_size
         self.action_size = action_size
         self.result_queue = result_queue
         self.global_model = global_model
         self.opt = opt
         self.input_shape = input_shape
-        # self.local_model = ActorCriticModel(
-        #     self.state_size, self.action_size, self.input_shape)
-        self.local_model = ActorCriticModelTwo(
-            self.state_size, self.action_size, self.input_shape)
+        # self.local_model = CNN(self.action_size, self.input_shape)
+        self.local_model = CnnGru(self.action_size, self.input_shape)
         self.worker_idx = idx
         self.game_name = game_name
         self.env = ObstacleTowerEnv(env_path, worker_id=self.worker_idx,
@@ -319,7 +206,7 @@ class Worker(threading.Thread):
                 if time_count == self.update_freq or done:
                     # calculate gradient wrt to local model
                     with tf.GradientTape() as tape:
-                        total_loss = self.compute_loss(
+                        total_loss = self.local_model.compute_loss(
                             done, new_state, mem, self.gamma)
 
                     self.ep_loss += total_loss
@@ -362,114 +249,3 @@ class Worker(threading.Thread):
 
         self.result_queue.put(None)
         self.env.close()
-
-    """
-    def compute_loss(self, done, new_state, memory, gamma=0.99):
-        beta_regularizer = 0.01
-
-        if done:  # game has terminated
-            reward_sum = 0.
-        else:
-            reward_sum = self.local_model(tf.convert_to_tensor(
-                np.expand_dims(new_state, axis=0), dtype=tf.float32))[-1].numpy()[0]
-
-        # Get discounted rewards
-        # TODO: try to normalize the discounted rewards
-        discounted_rewards = []
-        for reward in memory.rewards[::-1]:  # reverse buffer r
-            reward_sum = reward + gamma * reward_sum
-            discounted_rewards.append(reward_sum)
-        discounted_rewards.reverse()
-
-        logits, values = self.local_model(tf.convert_to_tensor(
-            np.stack(memory.states), dtype=tf.float32))
-
-        # get our advantages
-        q_value_estimate = tf.convert_to_tensor(
-            np.array(discounted_rewards)[:, None], dtype=tf.float32)
-        advantage = q_value_estimate - values
-
-        # value loss
-        value_loss = advantage ** 2
-
-        # policy loss
-        actions_one_hot = tf.one_hot(
-            memory.actions, self.action_size, dtype=tf.float32)
-
-        policy = tf.nn.softmax(logits)
-        entropy = tf.nn.softmax_cross_entropy_with_logits(
-            labels=policy, logits=logits)
-        # entropy = tf.reduce_sum(policy * tf.math.log(policy + 1e-20), axis=1)
-
-        policy_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-            labels=memory.actions, logits=logits)
-        # policy_loss = tf.compat.v1.nn.softmax_cross_entropy_with_logits_v2(
-        #     labels=actions_one_hot, logits=logits)
-        policy_loss *= tf.stop_gradient(advantage)
-        policy_loss -= beta_regularizer * entropy
-
-        total_loss = tf.reduce_mean((0.5 * value_loss + policy_loss))
-
-        return total_loss
-    """
-
-    def get_discounted_rewards(self, new_state, memory, done, gamma):
-        if done:  # game has terminated
-            reward_sum = 0.
-        else:
-            reward_sum = self.local_model(tf.convert_to_tensor(
-                np.expand_dims(new_state, axis=0), dtype=tf.float32))[-1].numpy()[0]
-
-        # TODO: try to normalize the discounted rewards
-        discounted_rewards = []
-        for reward in memory.rewards[::-1]:  # reverse buffer r
-            reward_sum = reward + gamma * reward_sum
-            discounted_rewards.append(reward_sum)
-        discounted_rewards.reverse()
-
-        return discounted_rewards
-
-    def get_advantage(self, returns, values):
-        advantage = returns - values
-        advantage = (advantage - tf.math.reduce_mean(advantage)) / \
-            (tf.math.reduce_std(advantage) + 1e-6)
-        return advantage
-
-    def policy_loss(self, memory, policy, advantage):
-        """
-        A2C policy loss calculation: -1/n * sum(advantage * log(policy)).
-        """
-        policy_logs = tf.math.log(tf.clip_by_value(policy, clip_value_min=1e-20, clip_value_max=1.0))
-
-        # only take policies for taken actions
-        action_indices = tf.one_hot(memory.actions, self.action_size, dtype=tf.float32)
-        pi_logs = tf.math.reduce_sum(tf.math.multiply(policy_logs, action_indices), axis=1)
-        policy_loss = -tf.math.reduce_mean(advantage * pi_logs)
-
-        return policy_loss
-
-    def value_loss(self, returns, values):
-        mse = tf.keras.losses.MeanSquaredError()
-        return 0.5 * mse(values, returns).numpy()
-
-    def entropy(self, policy):
-        dist = tfp.distributions.Categorical
-        return dist(probs=policy).entropy()
-
-    def compute_loss(self, done, new_state, memory, gamma=0.99):
-        discounted_rewards = self.get_discounted_rewards(new_state, memory, done, gamma)
-        returns = tf.convert_to_tensor(np.array(discounted_rewards)[:, None], dtype=tf.float32)
-        
-        policy_logits, values = self.local_model(tf.convert_to_tensor(np.stack(memory.states), dtype=tf.float32))
-        policy = tf.nn.softmax(policy_logits)
-        advantage = self.get_advantage(returns, values)
-
-        value_loss = self.value_loss(returns, values)
-        policy_loss = self.policy_loss(memory, policy, advantage)
-        entropy = self.entropy(policy)
-
-        value_coeff = 0.5
-        entropy_coeff = 0.01
-        total_loss = policy_loss + value_coeff * value_loss - entropy_coeff * entropy
-
-        return total_loss
