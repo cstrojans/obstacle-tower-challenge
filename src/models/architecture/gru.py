@@ -43,12 +43,12 @@ class CnnGru(keras.Model):
 
         # reshape
         self.flatten = layers.Flatten()
-        self.fc1 = layers.Dense(units=512,
+        self.fc1 = layers.Dense(units=256,
                                 activation=tf.keras.activations.relu
                                 )
 
         # RNN - temporal dependencies
-        self.gru = layers.GRU(512)
+        self.gru = layers.GRU(256)
 
         # policy output layer (Actor)
         self.policy_logits = layers.Dense(units=self.action_size,
@@ -145,7 +145,7 @@ class CnnGru(keras.Model):
         entropy = self.entropy(policy)
 
         value_coeff = 0.5
-        entropy_coeff = 0.01
+        entropy_coeff = 0.001
         total_loss = policy_loss + value_coeff * value_loss - entropy_coeff * entropy
 
         return total_loss

@@ -10,8 +10,6 @@ if __name__ == '__main__':
         description="arguments for playing the OTC game")
     parser.add_argument('--env', default=None, type=str,
                         help='Path to OTC game executable.')
-    parser.add_argument('--train', action='store_true',
-                        default=False, help='Train the model.')
     parser.add_argument('--evaluate', action='store_true',
                         default=False, help='Evaluate the trained model.')
     parser.add_argument('--algorithm', type=str, default='a3c',
@@ -23,10 +21,10 @@ if __name__ == '__main__':
 
     eval_seeds = [1001, 1002, 1003, 1004, 1005]
     if args.algorithm == 'random':
-        model = RandomAgent(env_path=args.env, train=args.train,
+        model = RandomAgent(env_path=args.env, train=False,
                             evaluate=args.evaluate, eval_seeds=eval_seeds, save_dir=args.save_dir)
     elif args.algorithm == 'a3c':
-        model = MasterAgent(env_path=args.env, train=args.train,
+        model = MasterAgent(env_path=args.env, train=False,
                             evaluate=args.evaluate, eval_seeds=eval_seeds, save_dir=args.save_dir)
 
     if args.evaluate:  # perform evaluation

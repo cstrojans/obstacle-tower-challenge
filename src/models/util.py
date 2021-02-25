@@ -55,7 +55,9 @@ class ActionSpace:
             }
         ]
 
+    """
     def get_action_meaning(self, action):
+        # with retro=False
         action_permutation = self.all_actions[action]
         return "[{}, {}, {}, {}]".format(
             self.actions[0][action_permutation[0]],
@@ -63,9 +65,19 @@ class ActionSpace:
             self.actions[2][action_permutation[2]],
             self.actions[3][action_permutation[3]]
         )
+    """
+
+    def get_action_meaning(self, action):
+        # with retro=False
+        return "[{}, {}, {}, {}]".format(
+            self.actions[0][action[0]],
+            self.actions[1][action[1]],
+            self.actions[2][action[2]],
+            self.actions[3][action[3]]
+        )
 
 
-def record(episode, episode_reward, worker_idx, global_ep_reward, result_queue, total_loss, num_steps):
+def record(episode, episode_reward, worker_idx, global_ep_reward, result_queue, total_loss, num_steps, num_global_steps):
     """Helper function to store score and print statistics.
     Args:
       episode: Current episode
@@ -86,6 +98,7 @@ def record(episode, episode_reward, worker_idx, global_ep_reward, result_queue, 
         f"Episode Reward: {int(episode_reward)} | "
         f"Loss: {int(total_loss / float(num_steps) * 1000) / 1000} | "
         f"Steps: {num_steps} | "
+        f"Total Steps: {num_global_steps} | "
         f"Worker: {worker_idx}"
     )
     result_queue.put(global_ep_reward)
@@ -98,3 +111,4 @@ def normalized_columns_initializer(std=1.0):
         out *= std / np.sqrt(np.square(out).sum(axis=0, keepdims=True))
         return tf.constant(out)
     return _initializer
+
