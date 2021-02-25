@@ -3,6 +3,8 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 from tensorflow.python import keras
 from tensorflow.python.keras import layers
+from models.util import normalized_columns_initializer
+
 
 class CnnGru(keras.Model):
     def __init__(self, action_size, ip_shape=(84, 84, 3)):
@@ -12,31 +14,54 @@ class CnnGru(keras.Model):
 
         # CNN - spatial dependencies
         # (20, 20, 32)
-        self.conv1 = layers.Conv2D(filters=32, kernel_size=(8, 8), strides=(4, 4), padding='same', activation=lambda x: tf.nn.leaky_relu(
-            x, alpha=0.01), data_format='channels_last', input_shape=self.ip_shape)
+        self.conv1 = layers.Conv2D(filters=32,
+                                   kernel_size=(8, 8),
+                                   strides=(4, 4),
+                                   padding='same',
+                                   activation=tf.keras.activations.relu,
+                                   data_format='channels_last',
+                                   input_shape=self.ip_shape
+                                   )
 
         # (9, 9, 64)
-        self.conv2 = layers.Conv2D(filters=64, kernel_size=(4, 4), strides=(
-            2, 2), padding='same', activation=lambda x: tf.nn.leaky_relu(x, alpha=0.01), data_format='channels_last')
+        self.conv2 = layers.Conv2D(filters=64,
+                                   kernel_size=(4, 4),
+                                   strides=(2, 2),
+                                   padding='same',
+                                   activation=tf.keras.activations.relu,
+                                   data_format='channels_last'
+                                   )
 
         # (7, 7, 64)
-        self.conv3 = layers.Conv2D(filters=64, kernel_size=(3, 3), strides=(
-            1, 1), padding='same', activation=lambda x: tf.nn.leaky_relu(x, alpha=0.01), data_format='channels_last')
+        self.conv3 = layers.Conv2D(filters=64,
+                                   kernel_size=(3, 3),
+                                   strides=(1, 1),
+                                   padding='same',
+                                   activation=tf.keras.activations.relu,
+                                   data_format='channels_last'
+                                   )
 
         # reshape
         self.flatten = layers.Flatten()
-        self.fc1 = layers.Dense(
-            units=512, activation=lambda x: tf.nn.leaky_relu(x, alpha=0.01))
+        self.fc1 = layers.Dense(units=512,
+                                activation=tf.keras.activations.relu
+                                )
 
         # RNN - temporal dependencies
         self.gru = layers.GRU(512)
 
         # policy output layer (Actor)
-        self.policy_logits = layers.Dense(
-            self.action_size, name='policy_logits')
+        self.policy_logits = layers.Dense(units=self.action_size,
+                                          kernel_initializer=normalized_columns_initializer(
+                                              0.01),
+                                          name='policy_logits'
+                                          )
 
         # value output layer (Critic)
-        self.values = layers.Dense(units=1, name='value')
+        self.values = layers.Dense(units=1,
+                                   kernel_initializer=normalized_columns_initializer(
+                                       1.0),
+                                   name='value')
 
     def call(self, inputs):
         # converts RGB image to grayscale
@@ -57,7 +82,7 @@ class CnnGru(keras.Model):
         values = self.values(x)
 
         return logits, values
-    
+
     def get_discounted_rewards(self, new_state, memory, done, gamma):
         if done:  # game has terminated
             reward_sum = 0.

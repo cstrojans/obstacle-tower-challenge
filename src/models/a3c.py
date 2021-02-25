@@ -57,8 +57,8 @@ class MasterAgent():
         self.action_size = self.env.action_space.n  # 54
         self.input_shape = self.env.observation_space.shape  # (84, 84, 3)
 
-        # TODO: try RMSProp optimizer instead of Adam
-        self.opt = tf.compat.v1.train.AdamOptimizer(lr, use_locking=True)
+        self.opt = tf.compat.v1.train.AdamOptimizer(lr, epsilon=1e-05, use_locking=True)
+        # self.opt = tf.keras.optimizers.RMSprop(learning_rate=lr, epsilon=1e-05, use_locking=True)
 
         # global network
         # self.global_model = CNN(self.action_size, self.input_shape)
@@ -171,7 +171,7 @@ class Worker(threading.Thread):
         self.env = ObstacleTowerEnv(env_path, worker_id=self.worker_idx,
                                     retro=True, realtime_mode=False, config=train_env_reset_config)
         self.save_dir = save_dir
-        self.model_path = os.path.join(self.save_dir, 'model_a3c_local')
+        self.model_path = os.path.join(self.save_dir, 'model_a3c')
         self.ep_loss = 0.0
         self.max_eps = max_eps
         self.update_freq = update_freq

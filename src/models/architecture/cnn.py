@@ -13,14 +13,26 @@ class CNN(keras.Model):
 
         # common network with shared parameters
         # (20, 20, 16)
-        self.conv1 = layers.Conv2D(filters=16, kernel_size=(8, 8), strides=(
-            4, 4), padding='same', activation='relu', data_format='channels_last', input_shape=self.ip_shape)
+        self.conv1 = layers.Conv2D(filters=16,
+                                   kernel_size=(8, 8),
+                                   strides=(4, 4),
+                                   padding='same',
+                                   activation=tf.keras.activations.relu,
+                                   data_format='channels_last',
+                                   input_shape=self.ip_shape
+                                   )
         # (9, 9, 32)
-        self.conv2 = layers.Conv2D(filters=32, kernel_size=(4, 4), strides=(
-            2, 2), padding='same', activation='relu', data_format='channels_last')
+        self.conv2 = layers.Conv2D(filters=32,
+                                   kernel_size=(4, 4),
+                                   strides=(2, 2),
+                                   padding='same',
+                                   activation=tf.keras.activations.relu,
+                                   data_format='channels_last'
+                                   )
         # (9 * 9 * 32)
         self.flatten = layers.Flatten()
-        self.dense1 = layers.Dense(units=256, activation='relu')
+        self.dense1 = layers.Dense(
+            units=256, activation=tf.keras.activations.relu)
 
         # policy output layer (Actor)
         self.policy_logits = layers.Dense(
