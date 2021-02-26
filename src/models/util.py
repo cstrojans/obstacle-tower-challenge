@@ -89,3 +89,28 @@ def record(episode, episode_reward, worker_idx, global_ep_reward, result_queue, 
     )
     result_queue.put(global_ep_reward)
     return global_ep_reward
+
+class Memory_PPO:
+    def __init__(self):
+        self.states = []
+        self.actions = []
+        self.rewards = []
+        self.logprobs = []
+        self.is_terminals = []
+        self.values = []
+
+    def store(self, state, action, reward, logprob, is_terminal, value):
+        self.states.append(state)
+        self.actions.append(action)
+        self.rewards.append(reward)
+        self.logprobs.append(logprob)
+        self.is_terminals.append(is_terminal)
+        self.values.append(value)
+
+    def clear(self):
+        self.states = []
+        self.actions = []
+        self.rewards = []
+        self.logprobs = []
+        self.is_terminals = []
+        self.value = []

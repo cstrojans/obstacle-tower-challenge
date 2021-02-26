@@ -1,5 +1,5 @@
 import argparse
-from models.a3c import MasterAgent
+
 from models.random_agent import RandomAgent
 from obstacle_tower_env import ObstacleTowerEnv
 import time
@@ -40,6 +40,13 @@ if __name__ == '__main__':
                                    evaluate=args.evaluate, max_eps=args.max_eps, save_dir=args.save_dir)
         random_agent.train()
     elif args.algorithm == 'a3c':
+        from models.a3c import MasterAgent
+        master = MasterAgent(env_path=args.env, train=args.train, evaluate=args.evaluate, lr=args.lr, max_eps=args.max_eps,
+                             update_freq=args.update_freq, gamma=args.gamma, num_workers=args.num_workers, save_dir=args.save_dir)
+        master.build_graph().summary()
+        master.train()
+    elif args.algorithm == 'ppo':
+        from models.a3c_ppo import MasterAgent
         master = MasterAgent(env_path=args.env, train=args.train, evaluate=args.evaluate, lr=args.lr, max_eps=args.max_eps,
                              update_freq=args.update_freq, gamma=args.gamma, num_workers=args.num_workers, save_dir=args.save_dir)
         master.build_graph().summary()
