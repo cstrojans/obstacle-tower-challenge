@@ -83,7 +83,8 @@ def record(episode, episode_reward, worker_idx, global_ep_reward, result_queue, 
         f"Episode: {episode} | "
         f"Moving Average Reward: {int(global_ep_reward)} | "
         f"Episode Reward: {int(episode_reward)} | "
-        f"Loss: {int(total_loss / float(num_steps) * 1000) / 1000} | "
+        # f"Loss: {int(total_loss / float(num_steps) * 1000) / 1000} | "
+        f"Loss: {total_loss} | "
         f"Steps: {num_steps} | "
         f"Worker: {worker_idx}"
     )

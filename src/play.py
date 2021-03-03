@@ -1,8 +1,6 @@
 from obstacle_tower_env import ObstacleTowerEnv, ObstacleTowerEvaluation
 import sys
 import argparse
-from models.random_agent import RandomAgent
-from models.a3c import MasterAgent
 
 
 if __name__ == '__main__':
@@ -23,12 +21,16 @@ if __name__ == '__main__':
 
     eval_seeds = [1001, 1002, 1003, 1004, 1005]
     if args.algorithm == 'random':
+        from models.random_agent import RandomAgent
         model = RandomAgent(env_path=args.env, train=args.train,
                             evaluate=args.evaluate, eval_seeds=eval_seeds, save_dir=args.save_dir)
     elif args.algorithm == 'a3c':
+        from models.a3c import MasterAgent
         model = MasterAgent(env_path=args.env, train=args.train,
                             evaluate=args.evaluate, eval_seeds=eval_seeds, save_dir=args.save_dir)
-
+    elif args.algorithm == 'ppo':
+        from models.a3c_ppo import MasterAgent
+        model = MasterAgent(env_path=args.env, train=args.train, evaluate=args.evaluate, save_dir=args.save_dir)
     if args.evaluate:  # perform evaluation
         model.evaluate()
     else:

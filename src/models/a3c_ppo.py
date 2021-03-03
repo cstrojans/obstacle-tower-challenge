@@ -106,7 +106,7 @@ class MasterAgent():
         plt.ylabel('Moving average episode reward')
         plt.xlabel('Step')
         plt.savefig(os.path.join(self.save_dir,
-                                 'model_a3c_moving_average.png'))
+                                 'model_ppo_moving_average.png'))
 
         # save the trained model to a file
         print('Saving model to: {}'.format(self.model_path))
