@@ -6,17 +6,23 @@ class Memory:
     def __init__(self):
         self.states = []
         self.actions = []
+        self.action_probs_history = []
+        self.critic_value_history = []
         self.rewards = []
 
-    def store(self, state, action, reward):
+    def store(self, state, action, action_prob, value, reward):
         self.states.append(state)
         self.actions.append(action)
+        self.action_probs_history.append(action_prob)
+        self.critic_value_history.append(value)
         self.rewards.append(reward)
 
     def clear(self):
-        self.states = []
-        self.actions = []
-        self.rewards = []
+        self.states.clear()
+        self.actions.clear()
+        self.action_probs_history.clear()
+        self.critic_value_history.clear()
+        self.rewards.clear()
 
 
 class ActionSpace:
@@ -96,7 +102,8 @@ def record(episode, episode_reward, worker_idx, global_ep_reward, result_queue, 
         f"Episode: {episode} | "
         f"Moving Average Reward: {int(global_ep_reward)} | "
         f"Episode Reward: {int(episode_reward)} | "
-        f"Loss: {int(total_loss / float(num_steps) * 1000) / 1000} | "
+        # f"Loss: {int(total_loss / float(num_steps) * 1000) / 1000} | "
+        f"Loss: {total_loss[0]} | "
         f"Steps: {num_steps} | "
         f"Total Steps: {num_global_steps} | "
         f"Worker: {worker_idx}"
