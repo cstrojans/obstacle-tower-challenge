@@ -55,8 +55,8 @@ class CnnGru(keras.Model):
 
     def call(self, inputs):
         # converts RGB image to grayscale
-        # x = tf.image.rgb_to_grayscale(inputs)
-        x = self.conv1(inputs)
+        x = tf.image.rgb_to_grayscale(inputs)
+        x = self.conv1(x)
         x = self.conv2(x)
         x = self.conv3(x)
 

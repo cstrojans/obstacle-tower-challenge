@@ -247,9 +247,9 @@ class Worker(threading.Thread):
                     obs, reward, done, _ = self.env.step(action)
                     state, new_keys, new_health, cur_floor = obs
                     
-                    reward = self.get_updated_reward(reward, new_health, new_keys, done)
-                    self._last_health = new_health
-                    self._last_keys = new_keys
+                    # reward = self.get_updated_reward(reward, new_health, new_keys, done)
+                    # self._last_health = new_health
+                    # self._last_keys = new_keys
 
                     mem.store(action_prob=action_probs[0, action_index],
                               value=critic_value[0, 0],
