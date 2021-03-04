@@ -2,27 +2,28 @@ import itertools
 import numpy as np
 import tensorflow as tf
 
+
 class Memory:
     def __init__(self):
-        self.states = []
-        self.actions = []
+        # self.states = []
+        # self.actions = []
         self.action_probs_history = []
         self.critic_value_history = []
-        self.rewards = []
+        self.rewards_history = []
 
-    def store(self, state, action, action_prob, value, reward):
-        self.states.append(state)
-        self.actions.append(action)
+    def store(self, action_prob, value, reward):
+        # self.states.append(state)
+        # self.actions.append(action)
         self.action_probs_history.append(action_prob)
         self.critic_value_history.append(value)
-        self.rewards.append(reward)
+        self.rewards_history.append(reward)
 
     def clear(self):
-        self.states.clear()
-        self.actions.clear()
+        # self.states.clear()
+        # self.actions.clear()
         self.action_probs_history.clear()
         self.critic_value_history.clear()
-        self.rewards.clear()
+        self.rewards_history.clear()
 
 
 class ActionSpace:
@@ -83,7 +84,7 @@ class ActionSpace:
         )
 
 
-def record(episode, episode_reward, worker_idx, global_ep_reward, result_queue, total_loss, num_steps, num_global_steps):
+def record(episode, episode_reward, worker_idx, global_ep_reward, result_queue, total_loss, num_steps, global_steps):
     """Helper function to store score and print statistics.
     Args:
       episode: Current episode
@@ -98,16 +99,9 @@ def record(episode, episode_reward, worker_idx, global_ep_reward, result_queue, 
         global_ep_reward = episode_reward
     else:
         global_ep_reward = global_ep_reward * 0.99 + episode_reward * 0.01
-    print(
-        f"Episode: {episode} | "
-        f"Moving Average Reward: {int(global_ep_reward)} | "
-        f"Episode Reward: {int(episode_reward)} | "
-        # f"Loss: {int(total_loss / float(num_steps) * 1000) / 1000} | "
-        f"Loss: {total_loss[0]} | "
-        f"Steps: {num_steps} | "
-        f"Total Steps: {num_global_steps} | "
-        f"Worker: {worker_idx}"
-    )
+
+    print("Episode: {} | Moving Average Reward: {:.3f} | Episode Reward: {:.3f} | Loss: {:.3f} | Steps: {} | Total Steps: {} | Worker: {}".format(
+        episode, global_ep_reward, episode_reward, total_loss, num_steps, global_steps, worker_idx))
     result_queue.put(global_ep_reward)
     return global_ep_reward
 
@@ -118,4 +112,3 @@ def normalized_columns_initializer(std=1.0):
         out *= std / np.sqrt(np.square(out).sum(axis=0, keepdims=True))
         return tf.constant(out)
     return _initializer
-
