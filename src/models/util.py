@@ -5,26 +5,51 @@ import tensorflow as tf
 
 class Memory:
     def __init__(self):
-        # self.states = []
-        # self.actions = []
         self.action_probs_history = []
         self.critic_value_history = []
         self.rewards_history = []
 
     def store(self, action_prob, value, reward):
-        # self.states.append(state)
-        # self.actions.append(action)
         self.action_probs_history.append(action_prob)
         self.critic_value_history.append(value)
         self.rewards_history.append(reward)
 
     def clear(self):
-        # self.states.clear()
-        # self.actions.clear()
         self.action_probs_history.clear()
         self.critic_value_history.clear()
         self.rewards_history.clear()
 
+
+class CuriosityMemory:
+    def __init__(self):
+        self.frames = []
+        self.rewards = []
+        self.dones = []
+        self.values = []
+        self.action_indices = []
+        self.policy = []
+        self.state_features = []
+        self.new_state_features = []
+
+    def store(self, state, reward, done, value, action_index, policy, state_f, new_state_f):
+        self.frames.append(state)
+        self.rewards.append(reward)
+        self.dones.append(done)
+        self.values.append(value)
+        self.action_indices.append(action_index)
+        self.policy.append(policy)
+        self.state_features.append(state_f)
+        self.new_state_features.append(new_state_f)
+    
+    def clear(self):
+        self.frames.clear()
+        self.rewards.clear()
+        self.dones.clear()
+        self.values.clear()
+        self.action_indices.clear()
+        self.policy.clear()
+        self.state_features.clear()
+        self.new_state_features.clear()
 
 class ActionSpace:
     def __init__(self):
@@ -84,7 +109,7 @@ class ActionSpace:
         )
 
 
-def record(episode, episode_reward, worker_idx, global_ep_reward, result_queue, total_loss, num_steps, global_steps):
+def record(episode, episode_reward, worker_idx, global_ep_reward, result_queue, total_loss, global_steps):
     """Helper function to store score and print statistics.
     Args:
       episode: Current episode
@@ -100,8 +125,8 @@ def record(episode, episode_reward, worker_idx, global_ep_reward, result_queue, 
     else:
         global_ep_reward = global_ep_reward * 0.99 + episode_reward * 0.01
 
-    print("Episode: {} | Moving Average Reward: {:.3f} | Episode Reward: {:.3f} | Loss: {:.3f} | Steps: {} | Total Steps: {} | Worker: {}".format(
-        episode, global_ep_reward, episode_reward, total_loss, num_steps, global_steps, worker_idx))
+    print("Episode: {} | Moving Average Reward: {:.3f} | Episode Reward: {:.3f} | Loss: {:.3f} | Total Steps: {}| Worker: {}".format(
+        episode, global_ep_reward, episode_reward, total_loss, global_steps, worker_idx))
     result_queue.put(global_ep_reward)
     return global_ep_reward
 

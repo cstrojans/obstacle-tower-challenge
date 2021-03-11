@@ -14,38 +14,44 @@ class CnnGru(keras.Model):
 
         # CNN - spatial dependencies
         # (20, 20, 32)
-        self.conv1 = layers.Conv2D(filters=16,
+        self.conv1 = layers.Conv2D(filters=32,
                                    kernel_size=(8, 8),
                                    strides=(4, 4),
                                    activation=tf.keras.activations.relu,
+                                #    activation=layers.LeakyReLU(alpha=0.01),
                                    data_format='channels_last',
                                    input_shape=self.ip_shape
                                    )
+        self.bn1 = layers.BatchNormalization()
 
         # (9, 9, 64)
-        self.conv2 = layers.Conv2D(filters=32,
+        self.conv2 = layers.Conv2D(filters=64,
                                    kernel_size=(4, 4),
                                    strides=(2, 2),
                                    activation=tf.keras.activations.relu,
+                                #    activation=layers.LeakyReLU(alpha=0.01),
                                    data_format='channels_last'
                                    )
+        self.bn2 = layers.BatchNormalization()
 
         # (7, 7, 64)
-        self.conv3 = layers.Conv2D(filters=16,
+        self.conv3 = layers.Conv2D(filters=64,
                                    kernel_size=(3, 3),
                                    strides=(1, 1),
                                    activation=tf.keras.activations.relu,
+                                #    activation=layers.LeakyReLU(alpha=0.01),
                                    data_format='channels_last'
                                    )
 
         # reshape
         self.flatten = layers.Flatten()
-        self.fc1 = layers.Dense(units=128,
+        self.fc1 = layers.Dense(units=256,
                                 activation=tf.keras.activations.relu
+                                # activation=layers.LeakyReLU(alpha=0.01)
                                 )
 
         # RNN - temporal dependencies
-        self.gru = layers.GRU(128)
+        self.gru = layers.GRU(256)
 
         # policy output layer (Actor)
         self.policy_logits = layers.Dense(units=self.action_size, activation=tf.nn.softmax, name='policy_logits')
@@ -55,9 +61,11 @@ class CnnGru(keras.Model):
 
     def call(self, inputs):
         # converts RGB image to grayscale
-        x = tf.image.rgb_to_grayscale(inputs)
-        x = self.conv1(x)
+        # x = tf.image.rgb_to_grayscale(inputs)
+        x = self.conv1(inputs)
+        x = self.bn1(x)
         x = self.conv2(x)
+        x = self.bn2(x)
         x = self.conv3(x)
 
         x = self.flatten(x)
@@ -108,6 +116,7 @@ class CnnGru(keras.Model):
             critic_losses.append(advantage ** 2)  # Mean Squared Error
             # critic_losses.append(loss_fn(tf.expand_dims(value, 0), tf.expand_dims(ret, 0)))  # Huber Loss
 
-        total_loss = (-sum(actor_losses) / len(actor_losses)) + 0.5 * sum(critic_losses)
+        # total_loss = (-sum(actor_losses) / len(actor_losses)) + 0.5 * sum(critic_losses)
+        total_loss = -sum(actor_losses) + 0.5 * sum(critic_losses)
         
         return total_loss

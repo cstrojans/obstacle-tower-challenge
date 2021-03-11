@@ -1,6 +1,4 @@
 import argparse
-from models.a3c import MasterAgent
-from models.random_agent import RandomAgent
 from obstacle_tower_env import ObstacleTowerEnv
 import time
 
@@ -13,7 +11,7 @@ if __name__ == '__main__':
                         help='Path to OTC game executable.')
     parser.add_argument('--algorithm', default='a3c', type=str,
                         help='Choose between \'a3c\' and \'random\'.')
-    parser.add_argument('--lr', default=1e-3, type=float,
+    parser.add_argument('--lr', default=1e-2, type=float,
                         help='Learning rate for the shared optimizer.')
     parser.add_argument('--max-eps', default=10, type=int,
                         help='Global maximum number of episodes to run.')
@@ -30,11 +28,19 @@ if __name__ == '__main__':
 
     start_time = time.time()
     if args.algorithm == 'random':
+        from models.random_agent import RandomAgent
         random_agent = RandomAgent(env_path=args.env, train=True,
                                    evaluate=False, max_eps=args.max_eps, save_dir=args.save_dir)
         random_agent.train()
     elif args.algorithm == 'a3c':
+        from models.a3c import MasterAgent
         master = MasterAgent(env_path=args.env, train=True, evaluate=False, lr=args.lr, max_eps=args.max_eps,
+                             update_freq=args.update_freq, gamma=args.gamma, num_workers=args.num_workers, save_dir=args.save_dir)
+        # master.build_graph().summary()
+        master.train()
+    elif args.algorithm == 'curiosity':
+        from models.a3c_curiosity import CuriosityMasterAgent
+        master = CuriosityMasterAgent(env_path=args.env, train=True, evaluate=False, lr=args.lr, max_eps=args.max_eps,
                              update_freq=args.update_freq, gamma=args.gamma, num_workers=args.num_workers, save_dir=args.save_dir)
         # master.build_graph().summary()
         master.train()
