@@ -17,7 +17,7 @@ if __name__ == '__main__':
                         default=False, help='Evaluate the trained model.')
     parser.add_argument('--algorithm', default='a3c', type=str,
                         help='Choose between \'a3c\' and \'random\'.')
-    parser.add_argument('--lr', default=0.001, type=float,
+    parser.add_argument('--lr', default=0.0001, type=float,
                         help='Learning rate for the shared optimizer.')
     parser.add_argument('--max-eps', default=10, type=int,
                         help='Global maximum number of episodes to run.')

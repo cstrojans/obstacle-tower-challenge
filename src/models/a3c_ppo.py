@@ -15,7 +15,7 @@ import threading
 import time
 
 from models.architecture.cnn_ppo import CNN
-# from models.architecture.gru import CnnGru
+from models.architecture.gru_ppo import CnnGru
 from models.util import ActionSpace, Memory_PPO
 from models.util import record
 from definitions import *
@@ -35,14 +35,18 @@ class MasterAgent():
         if train:
             self.env = ObstacleTowerEnv(
                 env_path, worker_id=0, retro=True, realtime_mode=False, config=train_env_reset_config)
+            
         else:
             if evaluate:
                 self.env = ObstacleTowerEnv(
                     env_path, worker_id=0, retro=True, realtime_mode=False, config=eval_env_reset_config)
-                self.env = ObstacleTowerEvaluation(self.env, eval_seeds)
+                # self.env = ObstacleTowerEvaluation(self.env, eval_seeds)
+                
             else:
                 self.env = ObstacleTowerEnv(
                     env_path, worker_id=0, retro=True, realtime_mode=True, config=eval_env_reset_config)
+                
+        self.env.seed(10)
         self.lr = lr
         self.max_eps = max_eps
         self.update_freq = update_freq
@@ -167,6 +171,7 @@ class Worker(threading.Thread):
         self.local_model = CNN(self.action_size, self.input_shape)
         self.prev_model = CNN(self.action_size, self.input_shape)
         # self.local_model = CnnGru(self.action_size, self.input_shape)
+        # self.prev_model = CnnGru(self.action_size, self.input_shape)
         self.worker_idx = idx
         self.game_name = game_name
         self.env = ObstacleTowerEnv(env_path, worker_id=self.worker_idx,

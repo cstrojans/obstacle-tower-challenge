@@ -84,12 +84,14 @@ class CNN(keras.Model):
         gamma = 0.99
         lmbda = 0.95
 
-
+        
         if done:  # game has terminated
-            reward_sum = 0.
+            reward_sum = 0
         else:
-            reward_sum = self.call(tf.convert_to_tensor(
-                np.expand_dims(new_state, axis=0), dtype=tf.float32))[-1].numpy()[0]
+            last_state = tf.convert_to_tensor(tf.expand_dims(new_state, axis=0), dtype=tf.float32)
+            _, critic_val = self.call(last_state)
+            print(critic_val)
+            reward_sum = critic_val[0, 0]
 
         memory.values.append(reward_sum) 
         values = memory.values
@@ -99,7 +101,6 @@ class CNN(keras.Model):
         gae = 0
         for i in reversed(range(len(rewards))):
             delta = rewards[i] + gamma * values[i + 1] * masks[i] - values[i]
-            # print(rewards[i], values[i].shape, delta.shape)
             gae = delta + gamma * lmbda * masks[i] * gae
             returns.insert(0, gae + values[i])
         
@@ -154,9 +155,32 @@ class CNN(keras.Model):
         gae = 0
         for i in reversed(range(len(rewards))):
             delta = rewards[i] + gamma * values[i + 1] * masks[i] - values[i]
-            # print(rewards[i], values[i].shape, delta.shape)
             gae = delta + gamma * lmbda * masks[i] * gae
             returns.insert(0, gae + values[i])
 
         adv = np.array(returns) - values[:-1]
         return returns, (adv - np.mean(adv)) / (np.std(adv) + 1e-10)
+    
+    # def get_returns(self, memory, last_state, done, gamma, eps):
+    #     """
+    #     Calculate expected value from rewards
+    #     - At each timestep what was the total reward received after that timestep
+    #     - Rewards in the past are discounted by multiplying them with gamma
+    #     - These are the labels for our critic
+    #     """
+    #     if done:  # game has terminated
+    #         discounted_reward_sum = 0.
+    #     else:  # bootstrap starting reward from last state
+    #         last_state = tf.convert_to_tensor(last_state)
+    #         last_state = tf.expand_dims(last_state, axis=0)
+    #         _, critic_value = self.call(last_state)
+    #         discounted_reward_sum = critic_value[0, 0]
+        
+    #     returns = []
+    #     for reward in memory.rewards_history[::-1]:  # reverse buffer r
+    #         discounted_reward_sum = reward + gamma * discounted_reward_sum
+    #         returns.append(discounted_reward_sum)
+    #     returns.reverse()
+    #     returns = np.array(returns)
+        
+    #     return returns
