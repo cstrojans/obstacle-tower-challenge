@@ -132,8 +132,8 @@ class ForwardModel(Layer):
         self.hidden_1 = layers.Dense(units=256*2, activation=layers.LeakyReLU(alpha=0.01))
         self.hidden_2 = layers.Dense(units=288, activation=layers.LeakyReLU(alpha=0.01))
     
-    def call(self, action_index, state_features):
-        concat_features = tf.concat((state_features, action_index), axis=1)
+    def call(self, action_one_hot, state_features):
+        concat_features = tf.concat([state_features, action_one_hot], axis=1)
         pred_next_state_f = self.fc1(concat_features)
         pred_next_state_f = self.hidden_1(pred_next_state_f)
         pred_next_state_f = self.hidden_2(pred_next_state_f)
@@ -148,7 +148,7 @@ class InverseModel(Layer):
         self.op = layers.Dense(units=action_size, activation=tf.nn.softmax)
     
     def call(self, state_features, next_state_features):
-        concat_features = tf.concat((state_features, next_state_features), axis=1)
+        concat_features = tf.concat([state_features, next_state_features], axis=1)
         pred_action_index = self.fc1(concat_features)
         pred_action_index = self.hidden_1(pred_action_index)
         pred_action_index = self.hidden_2(pred_action_index)

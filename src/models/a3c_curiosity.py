@@ -65,15 +65,16 @@ class CuriosityMasterAgent():
         self.global_agent = TowerAgent(self.action_size, self.input_shape)
 
         lr_schedule = keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=self.lr, decay_steps=1000, decay_rate=0.9)
-        self.opt = keras.optimizers.Adam(learning_rate=lr_schedule, epsilon=1e-05, use_locking=True)
+        self.opt = keras.optimizers.Adam(learning_rate=lr_schedule, epsilon=1e-05)
 
-        vec = np.random.random(self.input_shape)  # (84, 84, 3)
-        vec = np.expand_dims(vec, axis=0)  # (1, 84, 84, 3)
-        self.global_agent.act(tf.convert_to_tensor(vec, dtype=tf.float32))
+        vec = np.random.random(self.input_shape)
+        vec = np.expand_dims(vec, axis=0)
+        vec = tf.convert_to_tensor(vec, dtype=tf.float32)
+        self.global_agent.act(vec)
 
     def build_graph(self):
         """ build the model architecture """
-        x = keras.Input(shape=(84, 84, 3))
+        x = keras.Input(shape=self.input_shape)
         # TODO: replace call() with something else to get output tensor representation
         model = keras.Model(inputs=[x], outputs=self.global_agent.act(x))
         keras.utils.plot_model(model, to_file=os.path.join(
@@ -122,8 +123,8 @@ class CuriosityMasterAgent():
                                  'model_a3c_moving_average.png'))
 
         # save the trained model to a file
-        print('Saving global model to: {}'.format(self.model_path))
-        keras.models.save_model(self.global_agent, self.model_path)
+        # print('Saving global model to: {}'.format(self.model_path))
+        # keras.models.save_model(self.global_agent, self.model_path)
         self.env.close()
 
     def play_single_episode(self):
@@ -204,7 +205,9 @@ class Worker(threading.Thread):
         self.update_freq = update_freq
         self.gamma = gamma
         self.eps = np.finfo(np.float32).eps.item()  # smallest number such that 1.0 + eps != 1.0
-        self.timesteps = 5000000
+        # self.timesteps = 5000000
+        # self.batch_size = 128
+        self.timesteps = 1024
         self.batch_size = 128
         self.model_path = os.path.join(self.save_dir, 'model_a3c')
 
@@ -225,6 +228,30 @@ class Worker(threading.Thread):
 
         return reward
 
+    def update(self, tape, agent_loss, forward_loss, inverse_loss):
+        # calculate local gradients
+        variables = {
+            'ac_vars': self.local_agent.actor_critic_model.trainable_variables,
+            'fe_vars': self.local_agent.feature_extractor.trainable_variables,
+            'fm_vars': self.local_agent.forward_model.trainable_variables,
+            'im_vars': self.local_agent.inverse_model.trainable_variables
+        }
+        grads = tape.gradient(agent_loss, variables)
+        
+        # send local gradients to global model
+        self.opt.apply_gradients(zip(grads['ac_vars'], self.global_agent.actor_critic_model.trainable_variables))
+        self.opt.apply_gradients(zip(grads['fe_vars'], self.global_agent.feature_extractor.trainable_variables))
+        self.opt.apply_gradients(zip(grads['fm_vars'], self.global_agent.forward_model.trainable_variables))
+        self.opt.apply_gradients(zip(grads['im_vars'], self.global_agent.inverse_model.trainable_variables))
+
+        # update local model with new weights
+        self.local_agent.actor_critic_model.set_weights(self.global_agent.actor_critic_model.get_weights())
+        self.local_agent.feature_extractor.set_weights(self.global_agent.feature_extractor.get_weights())
+        self.local_agent.forward_model.set_weights(self.global_agent.forward_model.get_weights())
+        self.local_agent.inverse_model.set_weights(self.global_agent.inverse_model.get_weights())
+            
+        print("Gradient calculation and update completed.")
+    
     def run(self):
         mem = CuriosityMemory()
         num_updates = self.timesteps // self.batch_size
@@ -241,8 +268,14 @@ class Worker(threading.Thread):
                         state, _, _, _ = obs
                         reset = False
                     
-                    policy, value = self.local_agent.act(state)
+                    exp_state = tf.expand_dims(state, axis=0)
+                    exp_state = tf.convert_to_tensor(exp_state, dtype=tf.float32)
+                    policy, value = self.local_agent.act(exp_state)
+                    
                     action_index = np.random.choice(self.action_size, p=np.squeeze(policy))
+                    action_one_hot = np.zeros(self.action_size)
+                    action_one_hot[action_index] = 1
+                    action_one_hot = np.reshape(action_one_hot, (1, self.action_size))
                     action = self._action_lookup[action_index]
 
                     # TODO: implement frame skipping
@@ -252,16 +285,26 @@ class Worker(threading.Thread):
                     if done:
                         break
                         
-                    intrinsic_reward, state_features, new_state_features = self.local_agent.icm_act(state, new_state, action_index)
+                    intrinsic_reward, state_features, new_state_features = self.local_agent.icm_act(state, new_state, action_one_hot)
                     total_reward = reward + intrinsic_reward
                     episode_reward += total_reward
                     Worker.running_reward = 0.05 * episode_reward + (1 - 0.05) * Worker.running_reward
                     Worker.global_steps += 1
-                    mem.store(new_state, total_reward, done, value, action_index, policy, state_features, new_state_features)
+
+                    mem.store(new_state,
+                              total_reward,
+                              done,
+                              value,
+                              action_one_hot,
+                              policy,
+                              state_features, # (1, 288)
+                              new_state_features)
     
             # calculate loss
             agent_loss, forward_loss, inverse_loss = self.local_agent.compute_loss(mem, episode_reward)
-            self.local_agent.update(tape, agent_loss, forward_loss, inverse_loss)
+            self.update(tape, agent_loss, forward_loss, inverse_loss)
+
+            tape.reset()
             
             # clear the experience
             mem.clear()
@@ -276,10 +319,12 @@ class Worker(threading.Thread):
 
             # use a lock to save local model and to print to prevent data races.
             if episode_reward > Worker.best_score:
-                with Worker.save_lock:
-                    print('\nSaving best model to: {}, episode score: {}\n'.format(self.model_path, episode_reward))
-                    keras.models.save_model(self.global_agent, self.model_path)
-                    Worker.best_score = episode_reward
+                print("Found better score: old = {}, new = {}".format(Worker.best_score, episode_reward))
+                Worker.best_score = episode_reward
+                # with Worker.save_lock:
+                #     print('\nSaving best model to: {}, episode score: {}\n'.format(self.model_path, episode_reward))
+                #     keras.models.save_model(self.global_agent, self.model_path)
+                #     Worker.best_score = episode_reward
 
         self.result_queue.put(None)
         self.env.close()

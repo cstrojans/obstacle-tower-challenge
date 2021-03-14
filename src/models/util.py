@@ -31,12 +31,12 @@ class CuriosityMemory:
         self.state_features = []
         self.new_state_features = []
 
-    def store(self, state, reward, done, value, action_index, policy, state_f, new_state_f):
+    def store(self, state, reward, done, value, action_one_hot, policy, state_f, new_state_f):
         self.frames.append(state)
         self.rewards.append(reward)
         self.dones.append(done)
         self.values.append(value)
-        self.action_indices.append(action_index)
+        self.action_indices.append(action_one_hot)
         self.policy.append(policy)
         self.state_features.append(state_f)
         self.new_state_features.append(new_state_f)
