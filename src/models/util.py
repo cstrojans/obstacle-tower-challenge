@@ -5,22 +5,16 @@ import tensorflow as tf
 
 class Memory:
     def __init__(self):
-        # self.states = []
-        # self.actions = []
         self.action_probs_history = []
         self.critic_value_history = []
         self.rewards_history = []
 
     def store(self, action_prob, value, reward):
-        # self.states.append(state)
-        # self.actions.append(action)
         self.action_probs_history.append(action_prob)
         self.critic_value_history.append(value)
         self.rewards_history.append(reward)
 
     def clear(self):
-        # self.states.clear()
-        # self.actions.clear()
         self.action_probs_history.clear()
         self.critic_value_history.clear()
         self.rewards_history.clear()
@@ -100,9 +94,11 @@ def record(episode, episode_reward, worker_idx, global_ep_reward, result_queue, 
     else:
         global_ep_reward = global_ep_reward * 0.99 + episode_reward * 0.01
 
-    print("Episode: {} | Moving Average Reward: {:.3f} | Episode Reward: {:.3f} | Loss: {:.3f} | Steps: {} | Total Steps: {} | Worker: {}".format(
+    # print("Episode: {} | Moving Average Reward: {:.3f} | Episode Reward: {:.3f} | Loss: {:.3f} | Steps: {} | Total Steps: {} | Worker: {}".format(
+        # episode, global_ep_reward, episode_reward, total_loss, num_steps, global_steps, worker_idx))
+    print("Episode: {} | Moving Average Reward: {} | Episode Reward: {} | Loss: {} | Steps: {} | Total Steps: {} | Worker: {}".format(
         episode, global_ep_reward, episode_reward, total_loss, num_steps, global_steps, worker_idx))
-    result_queue.put(global_ep_reward)
+    result_queue.put((global_ep_reward, total_loss))
     return global_ep_reward
 
 

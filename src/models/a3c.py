@@ -62,8 +62,9 @@ class MasterAgent():
         self.update_freq = update_freq
         self.gamma = gamma
         self.model_path = os.path.join(self.save_dir, 'model_a3c')
-        # self.global_model = CNN(self.action_size, self.input_shape)
-        self.global_model = CnnGru(self.action_size, self.input_shape)
+        self.global_model = CNN(self.action_size, self.input_shape)
+        # self.global_model = CnnGru(self.action_size, self.input_shape)
+
         # self.opt = tf.compat.v1.train.AdamOptimizer(lr, epsilon=1e-05, use_locking=True)
         self.opt = keras.optimizers.Adam(learning_rate=self.lr)
         self.loss_fn = keras.losses.Huber()
@@ -103,12 +104,19 @@ class MasterAgent():
 
         # record episode reward to plot
         moving_average_rewards = []
+        losses = []
         while True:
-            reward = res_queue.get()
-            if reward is not None:
-                moving_average_rewards.append(reward)
+            result = res_queue.get()
+            if result:
+                reward, loss = result
             else:
                 break
+            if not reward or not loss:
+                break
+            else:
+                moving_average_rewards.append(reward)
+                losses.append(loss)
+            
         for w in workers:
             w.join()
 
@@ -116,16 +124,23 @@ class MasterAgent():
         print("\nTraining complete. Time taken = {} secs".format(
             end_time - start_time))
 
-        plt.plot(moving_average_rewards)
-        plt.ylabel('Moving average episode reward')
-        plt.xlabel('Step')
-        plt.savefig(os.path.join(self.save_dir,
-                                 'model_a3c_moving_average.png'))
+        fig, (ax1, ax2) = plt.subplots(nrows=2, ncols=1)
+        fig.suptitle('A3C Model')
+
+        ax1.plot(range(1, len(moving_average_rewards) + 1), moving_average_rewards)
+        ax1.set_title('Reward vs Timesteps')
+        ax1.set(xlabel='Episodes', ylabel='Reward')
+
+        ax2.plot(range(1, len(losses) + 1), losses)
+        ax2.set_title('Loss vs Timesteps')
+        ax2.set(xlabel='Episodes', ylabel='Loss')
+        
+        fig.tight_layout()
+        fig.savefig(os.path.join(self.save_dir, 'model_a3c_moving_average.png'))
 
         # save the trained model to a file
         print('Saving global model to: {}'.format(self.model_path))
         keras.models.save_model(self.global_model, self.model_path)
-        # self.global_model.save_weights('model_weights', save_format='tf')
         self.env.close()
 
     def play_single_episode(self):
@@ -133,8 +148,6 @@ class MasterAgent():
         action_space = ActionSpace()
         print('Loading model from: {}'.format(self.model_path))
         model = keras.models.load_model(self.model_path, compile=True)
-        # model = CnnGru(self.action_size, self.input_shape)
-        # model.load_weights('model_weights')
         print("Playing single episode...")
         done = False
         step_counter = 0
@@ -195,8 +208,8 @@ class Worker(threading.Thread):
         self._last_keys = 0
 
         self.global_model = global_model
-        # self.local_model = CNN(self.action_size, self.input_shape)
-        self.local_model = CnnGru(self.action_size, self.input_shape)
+        self.local_model = CNN(self.action_size, self.input_shape)
+        # self.local_model = CnnGru(self.action_size, self.input_shape)
         self.opt = opt_fn
         self.loss_fn = loss_fn
         self.ep_loss = 0.0
@@ -287,7 +300,6 @@ class Worker(threading.Thread):
                 with Worker.save_lock:
                     print('\nSaving best model to: {}, episode score: {}\n'.format(self.model_path, ep_reward))
                     keras.models.save_model(self.global_model, self.model_path)
-                    # self.global_model.save_weights('model_weights', save_format='tf')
                     Worker.best_score = ep_reward
                 
         self.result_queue.put(None)
