@@ -1,0 +1,251 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+% The preceding line is only needed to identify funding in the first footnote. If that is unneeded, please comment it out.
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+\begin{document}
+
+\title{Obstacle Tower Challenge}
+
+\author{\IEEEauthorblockN{Aditya Chandupatla}
+\IEEEauthorblockA{\textit{University of Southern California}\\
+Los Angeles, CA \\
+chandupa@usc.edu}
+\and
+\IEEEauthorblockN{Avantika Shenoy}
+\IEEEauthorblockA{\textit{University of Southern California}\\
+Los Angeles, CA \\
+avantika@usc.edu}
+\and
+\IEEEauthorblockN{Hardik Surana}
+\IEEEauthorblockA{\textit{University of Southern California}\\
+Los Angeles, CA \\
+hsurana@usc.edu}
+\and
+\IEEEauthorblockN{Pranshu Dave}
+\IEEEauthorblockA{\textit{University of Southern California}\\
+Los Angeles, CA \\
+pranshur@usc.edu}
+}
+
+\maketitle
+
+\begin{abstract}
+This paper talks about "The Obstacle Tower Challenge" game. It is a procedurally generated environment consisting of multiple floors to be solved by a learning agent. To tackle this challenge, the following problems must be solved: computer vision, locomotion skills, high-level planning, and generalization. The game is designed in such a way that it increases in difficulty as the agent progresses.
+
+Within each floor, the goal of the agent is to arrive at the set of stairs leading to the next level of the tower. These floors are composed of multiple rooms, each which can contain their own unique challenges. Furthermore, each floor contains a number of procedurally generated elements, such as visual appearance, puzzle configuration, and floor layout. This ensures that in order for an agent to be successful at the Obstacle Tower task, they must be able to generalize to new and unseen combinations of conditions.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Reinforcement learning, Asynchronous Advantage Actor Critic (A3C), Proximal Policy Optimization (PPO), Trust Region Policy Optimization (TRPO), Actor Critic with Experience Replay (ACER), Importance Weighted Actor Learner Architecture (IMPALA)
+\end{IEEEkeywords}
+
+\section{Introduction}
+While developing Artificial intelligence based methods to advance the field, it is worthwhile to have the ability to measure the performance of each of the methods. For tree search and reinforcement learning methods, the benchmarks of choice have often been based on games. Historically, games such as Checkers and Chess were prominent in AI research. They are responsible for many of the new methods which were invented later in the field of Artificial Intelligence. For example, the first reinforcement learning algorithm was developed to play Checkers [Samuel, 1959].
+
+In the past twenty years, video games have increasingly been used as AI benchmarks. In contrast to classic board games, video games require more frequent decision making, often in real-time settings. They may or may not also have some combination of stochasticity, convoluted interaction rules, and exponential branching factors. For example, if you consider 2D arcade games they have limited branching factor, which gives us a low-dimensional observation space. 
+
+However, more recently, with advances in the field of reinforcement learning, a new generation of video-game-based AI agents have become possible. The agents learn to act based on the raw pixel input provided to them. Furthermore, with the advances in the field of deep-learning, which is a field which excels at dealing with complex high-dimensional input, such as screen images, and also because of the advent of hardware accelerators such as: GPU's (Graphical Processing Units), TPU's (Tensor Processing Units), etc, training a reinforcement learning agent has become commonplace.
+
+In particular, the Arcade Learning Environment (ALE), which is based on an emulation of the Atari 2600 video game console, became one of the more widely used reinforcement learning benchmark after it was demonstrated that Deep Q-learning could learn to play many of these games at a human-competitive level [Bellemare et al., 2013; Mnih et al., 2015].
+
+Nevertheless, despite the hardware improvement and introduction of new reinforcement learning methods, targeting generalization is
+necessary in order to make progress on artificial general intelligence, rather than just solving individual problems.
+
+Obstacle Tower was developed specifically to overcome the limitations of previous game-based AI benchmarks, offering a broad and deep challenge, the solving of which would imply a major advancement in reinforcement learning. In brief, the features of Obstacle Tower are:
+
+\textbf{Complex high-dimensional textured input}: The environment is rendered in 3D using real-time lighting and shadows, along with much more detailed textures and model than previous benchmarks. 
+
+\textbf{Procedurally generated floors and rooms}: Navigating the game requires both dexterity and planning, and the floors within the environment are procedurally generated, making generalization a requirement to perform well during evaluation. 
+
+\textbf{Physics}: The movement of the agent and other objects within the environment are controlled by a real-time 3D physics system.
+
+\textbf{Procedurally generated visuals}: There are multiple levels of variation in the environment, including the textures, lighting conditions, and object geometry. Therefore agents must be able to generalize their understanding of objects’ appearance.
+
+\section{Related Works}
+
+Obstacle Tower game has been introduced as a challenge to the community of AI developers by Unity. Here, we list the top three winners of that challenge which Unity has released:
+\begin{itemize}
+\item Alex won the Obstacle Tower Challenge. He trained his agent in several steps. First, he trained a classifier to identify objects (boxes, doors, etc..). This classifier was used throughout the process to tell the agent what objects it has seen in the past 50 timesteps. Then, Alex used behavioral cloning to train an agent to imitate human demonstrations. Lastly, Alex used a variant of Proximal Policy Optimization (PPO) which he calls “prierarchy” to fine-tune his behavioral cloned agent based on the game’s reward function. This variant of PPO replaces the entropy term with a KL-divergence term that keeps the agent close to the original behavior cloned policy. Alex tried a few other approaches that didn’t quite pan out – Generative Adversarial Imitation Learning (GAIL) for more sample-efficient imitation learning, CMA-ES to learn a policy from scratch, and stacking last layer features from the classifier and feeding it into the agent (instead of using the classifier’s outputs for the state).
+\item Gianni and Miha received the second position. The team’s final model was PPO with a reduced action set and a reshaped reward function. For the first floors, the team also used KL-devergence terms to induce behaviors into the agent similar to what Alex Nichol did. But was later dropped in higher floors. The team also used a sampling algorithm at the key floors to focus the actors to run more in floors and seeds where it was neither good nor bad. Later, the team used a more standard sampling at higher floors. The team did not have enough time to assess the exact benefits of each method, which they plan to do in the future. They plan to release the source code as soon as they can understand better and generalize these aspects. Lastly, the team tried world models (create a very compressed representation of the observation with an autoencoder and build a policy using evolutionary algorithms over this space). It did not work but the team learned a lot.
+\item Songbin bagged the third price. He used the PPO algorithm implemented as part of the ML-Agents toolkit. During the challenge, his agent took actions in a sequentially coordinated fashion to achieve certain subtasks (for example, moving the box to a certain position). He used a gated recurrent unit (GRU) in order for the agent to make memory-backed decisions. To reduce overfitting, dropout layers were added and left right flipping was also used, which is a common data augmentation method in imaging tasks. He then recorded human play and repeatedly added those experiences to the replay buffer while training. As a side effect of playing the Obstacle Tower during the challenge, Songbin has become an expert player of the game. Although human play is brutally expensive to collect, it is of high quality and reduced the amount of simulation time needed. Songbin also tried longer sequence lengths but failed to achieve better performance (even though it was contrary to his expectation). He is still trying to figure out why it did not work. He utilized all 100 tower seeds during training with no separate validation set for evaluation. He suspected overfitting in the model, even though he tried to reduce as much as possible.
+Lastly, although deep learning methods in computer vision, especially image classification tasks, has matured in recent years, deep reinforcement learning tasks are relatively more tricky. His top scoring agent failed to show comparable performance to human player (around floor 30). Watching AlphaGo and AlphaStar beat professional players, Songbin believes there is still a lot of room for improvement in the Obstacle Tower.
+\end{itemize}
+
+\section{Environment}
+Obstacle Tower provides recognizable and configurable observation spaces, action spaces, and reward functions. The environment itself relies heavily on procedural generation at multiple levels of interaction. The Obstacle Tower environment uses the Unity platform and ML-Agents Toolkit [Juliani et al., 2018]. It can run on the Mac, Windows, and Linux platforms, and can be controlled via the OpenAI Gym interface for easy integration with existing DeepRL training frameworks [Brockman et al., 2016].
+
+\subsection{\textbf{Episode Dynamics}}
+The Obstacle Tower environment consists of up to 100 floors, with the agent starting on floor zero. All floors of the environment are treated as a single finite episode in the RL context. Each floor contains at the least a starting and ending room. Each room can contain a puzzle to solve, enemies to defeat, obstacles to evade, or a key to open a locked door. The layout of the floors and the contents of the rooms within each floor becomes more complex at higher floors in the Obstacle Tower, providing a natural curriculum for learning agents. Within an episode, it is only possible for the agent to go to higher floors of the environment, and not to return to lower floors.
+The episode terminates when the agent collides with a hazard such as a pit or enemy, when the timer runs out, or when the agent arrives at the top floor of the environment. The timer is set at the beginning of the episode, and completing floors as well as collecting time orbs increase the time left to
+the agent. In this way a successful agent must learn a behavior which is a trade off between collecting orbs and quickly completing floors of the tower in order to arrive at the higher floors before the timer ends.
+
+\subsection{\textbf{Observation Space}}
+The observation space of the agent consists of two types of information. The first type of observation is a rendered pixel image of the environment from a third person perspective.
+This image is rendered in 168 × 168 RGB, and can be downscaled to 84 × 84. The second type of observation is a vector of auxiliary variables which describe relevant, non-visual information about the state of the environment. The elements which make up this auxiliary vector are: number of keys agent is in possession of, as well as the time left in the episode.
+
+\subsection{\textbf{Action Space}}
+The action space of the agent is multi-discrete, meaning that it consists of a set of smaller discrete action spaces, of which the union corresponds to a single action in the environment. These subspaces are as follows: forward/backward/noop movement, left/right/no-op movement, clockwise/counterclockwise rotation of the camera/no-op, and no-op/jump. We also provide a version of the environment with this action space flattened into a single choice between one of 54 possible actions, whose size corresponds to the product of the sizes of all the sub-spaces in the multi-discrete case.
+
+\subsection{\textbf{Reward Function}}
+Obstacle Tower has two reward function configurations: sparse and dense. In the sparse reward configuration, a positive reward of +1 is provided only upon the agent completing a floor of the tower. In the dense reward version a positive reward of +0.1 is provided for opening doors, solving puzzles, or picking up keys. In many cases even the dense reward version of the Obstacle Tower will likely resemble the sparsity seen in previously sparse rewarding benchmarks, such as Montezuma’s Revenge [Bellemare et al., 2013]. Given the sparse-reward nature of this task, we encourage researchers to develop novel intrinsic reward-based systems, such as curiosity, empowerment, or other signals to augment the external reward signal provided by the environment.
+
+\section{Methods (Software and Algorithms)}
+
+\subsection{\textbf{Asynchronous Methods for Deep Reinforcement Learning (Actor Critic Method)}}
+
+Instead of experience replay, we asynchronously execute multiple agents in parallel, on multiple instances of the environment. This parallelism also decorrelates the agents’ data into a more stationary process, since at any given time-step the parallel agents will be experiencing a variety of different states. This simple idea enables a much larger spectrum of fundamental on-policy RL algorithms, such as Sarsa, n-step methods, and actor critic methods, as well as off-policy RL algorithms such as Q-learning, to be applied robustly and effectively using deep neural networks.
+
+The algorithm, which we call asynchronous advantage actor-critic (A3C), maintains a policy and an estimate of the value function. Our variant of actor-critic also operates in the forward view and uses the same mix of n-step returns to update both the policy and the value-function. The policy and the value function are updated after every tmax actions or when a terminal state is reached.
+
+The sequence of observed data encountered by an online RL agent is non-stationary, and online RL updates are strongly correlated. By storing the agent’s data in an experience replay memory, the data can be batched (Riedmiller, 2005; Schulman et al., 2015a) or randomly sampled (Mnih et al., 2013; 2015; Van Hasselt et al., 2015) from different time-steps. Aggregating over memory in this way reduces non-stationarity and decorrelates updates, but at the same time limits the methods to off-policy reinforcement learning algorithms. Deep RL algorithms based on experience replay have achieved unprecedented success in challenging domains such as Atari 2600. However, experience replay has several drawbacks: it uses more memory and computation per real interaction; and it requires off-policy learning algorithms that can update from data generated by an older policy
+
+In A3C, instead of experience replay, we asynchronously execute multiple agents in parallel, on multiple instances of the environment. This parallelism also decorrelates the agents’ data into a more stationary process, since at any given time-step the parallel agents will be experiencing a variety of different states.
+
+A3C algorithm is faster and more robust than the standard Reinforcement Learning Algorithms. It performs better than the other Reinforcement learning techniques because of the diversification of knowledge as explained above. And finally, it can be used on discrete as well as continuous action spaces.
+
+We analyzed the effectiveness of our proposed framework by looking at how the training time and data efficiency changes with the number of parallel actor-learners. When using multiple workers in parallel and updating a shared model, one would expect that in an ideal case, for a given task and algorithm, the number of training steps to achieve a certain score would remain the same with varying numbers of workers. Therefore, the advantage would be solely due to the ability of the system to consume more data in the same amount of wall clock time and possibly improved exploration. However, we achieved substantial speedups from using multiple worker threads, leading to at least an order of magnitude speedup. This confirms that our proposed framework scales well with the number of parallel workers, making efficient use of resources.
+
+In addition to these, a number of complementary improvements to the neural network architecture are possible. The dueling architecture of (Wang et al., 2015) has been shown to produce more accurate estimates of Q-values by including separate streams for the state value and advantage in the network. The spatial softmax proposed by (Levine et al., 2015) could improve both value-based and policy-based methods by making it easier for the network to represent feature coordinates.
+
+Combining other existing reinforcement learning methods or recent advances in deep reinforcement learning
+with our asynchronous framework presents many possibilities for immediate improvements to the methods we presented.
+
+\subsection{\textbf{Proximal Policy Optimization (PPO)}}
+
+In recent years, several different approaches have been proposed for reinforcement learning with neural network function approximators. The leading contenders are deep Q-learning [Mni+15], “vanilla” policy gradient methods [Mni+16], and trust region / natural policy gradient methods [Sch+15b]. However, there is room for improvement in developing a method that is scalable (to large models and parallel implementations), data efficient, and robust (i.e., successful on a variety of problems without hyperparameter tuning). Q-learning (with function approximation) fails on many simple problems and is poorly understood, vanilla policy gradient methods have poor data effiency and robustness; and trust region policy optimization (TRPO) is relatively complicated, and is not compatible with architectures that include noise (such as dropout) or parameter sharing (between the policy and value function, or with auxiliary tasks). We use PPO which proposes a novel objective with clipped probability ratios, which forms a pessimistic estimate (i.e., lower bound) of the performance of the policy. To optimize policies, we alternate between sampling data from the policy and performing several epochs of optimization on the sampled data. We also compare PPO to several previous algorithms from the literature. On continuous control tasks, it performs better than the algorithms we compare against. On Atari, it performs significantly better (in terms of sample complexity) than A2C and similarly to ACER though it is much simpler.
+
+Policy gradient methods work by computing an estimator of the policy gradient and plugging it into a stochastic gradient ascent algorithm. While it is appealing to perform multiple steps of optimization on this using the same trajectory, doing so is not well-justified, and empirically it often leads to destructively large policy updates.
+
+In TRPO [Sch+15b], an objective function (the “surrogate” objective) is maximized subject to a constraint on the size of the policy update. The theory justifying TRPO actually suggests using a penalty instead of a constraint, i.e., solving an unconstrained optimization problem
+
+This follows from the fact that a certain surrogate objective (which computes the max KL over states instead of the mean) forms a lower bound (i.e., a pessimistic bound) on the performance of the policy. TRPO uses a hard constraint rather than a penalty because it is hard to choose a single value that performs well across different problems. Hence, to achieve our goal of a first-order algorithm that emulates the monotonic improvement of TRPO, experiments show that it is not sufficient to simply choose a fixed penalty coefficient and optimize the penalized objective Equation with SGD; additional modifications are required.
+
+Another approach, which can be used as an alternative to the clipped surrogate objective, or in addition to it, is to use a penalty on KL divergence, and to adapt the penalty coefficient so that we achieve some target value of the KL divergence. In our experiments, we found that the KL penalty performed worse than the clipped surrogate objective, however, we’ve included it here because it’s an important baseline.
+
+The surrogate losses from the previous sections can be computed and differentiated with a minor change to a typical policy gradient implementation. For implementations that use automatic differentation, one simply constructs the loss and one performs multiple steps of stochastic gradient ascent on this objective.
+
+In a proximal policy optimization (PPO) algorithm that uses fixed-length trajectory segments, has several iterations. Each iteration, each of N  parallel) actors collect T timesteps of data. Then we construct the surrogate loss on these NT timesteps of data, and optimize it with minibatch SGD (or usually for better performance, Adam [KB14]), for K epochs.
+
+With supervised learning, we can easily implement the cost function, run gradient descent on it, and be very confident that we’ll get excellent results with relatively little hyperparameter tuning. The route to success in reinforcement learning isn’t as obvious — the algorithms have many moving parts that are hard to debug, and they require substantial effort in tuning in order to get good results. PPO strikes a balance between ease of implementation, sample complexity, and ease of tuning, trying to compute an update at each step that minimizes the cost function while ensuring the deviation from the previous policy is relatively small.
+
+We’ve previously detailed a variant of PPO that uses an adaptive KL penalty to control the change of the policy at each iteration. The new variant uses a novel objective function not typically found in other algorithms. This objective implements a way to do a Trust Region update which is compatible with Stochastic Gradient Descent, and simplifies the algorithm by removing the KL penalty and need to make adaptive updates. In tests, this algorithm has displayed the best performance on continuous control tasks and almost matches ACER’s performance on Atari, despite being far simpler to implement.
+
+PPO adds a soft constraint that can be optimized by a first-order optimizer. We may make some bad decisions once a while but it strikes a good balance on the speed of the optimization. Experimental results prove that this kind of balance achieves the best performance with the most simplicity.\\
+
+\textbf{Why PPO?}\\
+
+\begin{itemize}
+\item Unstable Policy Update: In Many Policy Gradient Methods, policy updates are unstable because of larger step size, which leads to bad policy updates and when this new bad policy is used for learning then it leads to even worse policy. And if steps are small then it leads to slower learning. \\
+\item Data Inefficiency: Many learning methods learn from current experience and discard the experiences after gradient updates. This makes the learning process slow as a neural net takes lots of data to learn.\\
+\end{itemize}
+
+PPO comes handy to overcome the above issues.\\
+
+In the next section we will be presenting our results and detailed analysis of what we have achieved by implementing A3C and PPO on Obstacle Tower Challenge.
+
+\section{Results and Analysis}
+
+Hardik and Pranshu please fill one page each for A3C and PPO
+
+\section{Limitations}
+
+Actor-critic methods combine policy gradient methods with a learned value function. With DQN, we only had the learned value function — the Q-function — and the “policy” we followed was simply taking the action that maximized the Q-value at each step. With A3C, as with the rest of actor-critic methods, we learn two different functions: the policy (or “actor”), and the value (the “critic”). The policy adjusts action probabilities based on the current estimated advantage of taking that action, and the value function updates that advantage based on the experience and rewards collected by following the policy
+
+The real contribution of A3C comes from its parallelized and asynchronous architecture: multiple actor-learners are dispatched to separate instantiations of the environment; they all interact with the environment and collect experience, and asynchronously push their gradient updates to a central “target network” (an idea borrowed from DQN). Later, OpenAI showed with A2C that asynchronicity does not actually contribute to performance, and in fact reduces sample efficiency.
+
+A3C/A2C can be powerful baseline agents, but they tend to suffer when faced with more complex tasks, severe partial observability, and/or long delays between actions and relevant reward signals. As a result, entire subfields of RL research have emerged to address these issues.
+
+The PPO algorithm was introduced by the OpenAI team in 2017 and quickly became one of the most popular RL methods usurping the Deep-Q learning method. It involves collecting a small batch of experiences interacting with the environment and using that batch to update its decision-making policy. Once the policy is updated with this batch, the experiences are thrown away and a newer batch is collected with the newly updated policy. This is the reason why it is an “on-policy learning” approach where the experience samples collected are only useful for updating the current policy once.
+
+The key contribution of PPO is ensuring that a new update of the policy does not change it too much from the previous policy. This leads to less variance in training at the cost of some bias, but ensures smoother training and also makes sure the agent does not go down an unrecoverable path of taking senseless actions.
+
+RL suffers from a problem: Training data is directly dependent on the policy since it is policy that is responsible for taking actions which lead to observations which are then taken as new data. Data distribution over observation and rewards is always changing. This also makes it susceptible to difficulty in hyper parameter tuning. PPO offers ease of implementation, sample efficiency, ease of tuning. PPO is a an on-line policy learning algorithm, it does not use a replay buffer, it in fact,  learns directly from agent’s actions on the environment.
+
+Policy gradient methods are less sample efficient than Q-learning since you only use data once after which it is discarded.
+
+The way reinforcement learning models the problem requires several conditions:
+
+You can quantify all the variables the environment describes and have access to these variables at each time step, or state. Neither may be the case in the real world; more often than not you only have access to partial information. The information that you do have access to itself can be inaccurate and in need of further extrapolation, since it is measured from an egocentric point of view (at least in the case of a robot interacting with an unknown environment).
+
+You can define a concrete reward function and compute the reward for taking an action. The reward function may not be obvious. For example, if I am designing an agent to perform path planning for an autonomous vehicle, how should we express the reward mathematically? How do we know that the reward function that we defined is "good"? One approach to get around this is inverse reinforcement learning.
+
+You can afford to make mistakes. The freedom to explore without consequence is not always present. If I want to build an autonomous vehicle using RL, how many thousands of times will the car crash itself before it can make even the simplest maneuvers?
+
+Still, training in simulated environments has yielded performance gains in the real world, and should not be dismissed.
+
+Since learning is predominantly online, you have to run trials many many times in order to produce an effective model. This is acceptable when the task at hand is simple, actions are discrete, and information is readily available. But in many cases, the problem formulation is significantly more complex and you must balance the precision of your simulator with both training time and real-time performance constraints.
+
+It is because of these limitations that recent successes in reinforcement learning have happened almost entirely in simulated, controlled environments (think DeepMind's research on Atari, AlphaGo). There is still tremendous research needed in overcoming these limitations and adapting deep RL to work effectively in real-time agents.
+
+Reinforcement learning needs a ton of data or epochs. This is equivalent to thousands of computing hours in a simulator. Such a long time is necessary to learn what humans can usually grasp in a few hours.
+
+For example, Rainbow DQN plays a number of games with the same engine and picks the best algorithm as a comparison. Such algorithm requires 44 million frames to learn play with superhuman capabilities. RainbowDQN passes the 100 percent threshold (just above human capabilities) at about 18 million frames. In other words this is about 83 hours of play experience. To this number one should add the time for training the model.
+
+That’s a lot of time! Especially when one considers that Atari games can be picked by a teenager within a few minutes.
+
+In the most common version of reinforcement learning, action sets are discrete. In many realistic use case, agents perform actions in a continuous space. Making a discrete action, continuous is not only non-trivial but will also increase the number of (discrete) actions the agent will have to deal with during policy optimisation. This in turn, affects training time and performance.
+
+Local optima are harder than those found in deep learning: If one thinks that it can be hard for Stochastic Gradient Descent to get out of local optima, then she should think twice. The level of complexity reached by the optimisation procedure of reinforcement learning is much higher than deep learning. It is much more difficult for a reinforcement learning agent escape local optima.
+
+This is due to the design of the reward function and to the state-action estimator itself (which is a deep neural network).
+
+\section{Future Work}
+
+\subsection{\textbf{Curiosity based learning}}
+
+In many real-world scenarios, rewards extrinsic to the agent are extremely sparse, or absent altogether. In such cases, curiosity can serve as an intrinsic reward signal to enable the agent to explore its environment and learn skills that might be useful later in its life. We formulate curiosity as the error in an agent's ability to predict the consequence of its own actions in a visual feature space learned by a self-supervised inverse dynamics model. Our formulation scales to high-dimensional continuous state spaces like images, bypasses the difficulties of directly predicting pixels, and, critically, ignores the aspects of the environment that cannot affect the agent.
+
+Three broad settings are currently being investigated, to make our agent curious:
+
+\begin{itemize}
+\item sparse extrinsic reward, where curiosity allows for far fewer interactions with the environment to reach the goal
+\item exploration with no extrinsic reward, where curiosity pushes the agent to explore more efficiently
+\item generalization to unseen scenarios (e.g. new levels of the same game) where the knowledge gained from earlier experience helps the agent explore new places much faster than starting from scratch
+\end{itemize}
+
+\subsection{\textbf{Distributed Tensorflow}}
+
+Using distributed training, we can train very large models and speed up training time. Tensorflow provides a high-end API to train your models in a distributed way with minimal code changes.  Two types of paradigms used for distributed training:
+\begin{itemize}
+\item Data parallelism: In data parallelism, models are replicated into different devices (GPU) and trained on batches of data.
+\item Model parallelism: When models are too large to fit on a single device then it can be distributed over many devices.
+\end{itemize}
+We will be investigating utilization of distributed tensorflow so that we can train our agents faster and tighten the developer feedback loop.
+
+Most of the competitors and the winners of Obstacle Tower Challenge have trained for significantly longer timesteps to obtain optimal results for the agent. In the remaining half of the semester our goal is to reach 5 million timesteps for training.
+
+\subsection{\textbf{IMPALA}}
+
+IMPALA uses an actor-critic setup to learn a policy and a baseline function. The process of generating experiences is decoupled from learning the parameters. The architecture consists of a set of actors, repeatedly generating trajectories of experience, and one or more learners that use the experiences sent from actors to learn an off-policy.
+
+At the beginning of each trajectory, an actor updates its own local policy to the latest learner policy and runs it for n steps in its environment. After n steps, the actor sends the trajectory of states, actions and rewards x1, a1, r1, . . . , xn, an, rn together with the corresponding policy distributions and initial LSTM state to the learner through a queue. The learner then continuously updates its policy on batches of trajectories, each collected from many actors. This simple architecture enables the learner(s) to be accelerated using GPUs and actors to be easily distributed across many machines. However, the learner policy is potentially several updates ahead of the actor’s policy at the time of update, therefore there is a policy-lag between the actors and learner(s). V-trace corrects for this lag to achieve extremely high data throughput while maintaining data efficiency. Using an actor-learner architecture, provides fault tolerance like distributed A3C but often has lower communication overhead since the actors send observations rather than parameters/gradients.
+
+With the introduction of very deep model architectures, the speed of a single GPU is often the limiting factor during training. IMPALA can be used with distributed set of learners to train large neural networks efficiently. Parameters are distributed across the learners and actors retrieve the parameters from all the learners in parallel while only sending observations to a single learner. IMPALA use synchronised parameter update which is vital to maintain data efficiency when scaling to many machines.
+
+\section{Conclusions}
+
+As is evident from the discussion, our agent currently is able to take actions which allows it to progress in the game. However, these are still early days, and with the introduction of distributed training, IMPALA, Curiosity based learning, etc, our agent will be able to take much optimal decisions and we are expecting it to go past several levels in the Obstacle Tower.
+
+\section{Acknowledgement}
+
+We would like to thank the professor Dr. Michael Zyda and the TAs for allowing us to work on this project.
+
+\begin{thebibliography}{00}
+\bibitem{b1} Asynchronous Methods for Deep Reinforcement Learning - Volodymyr Mnih, Adrià Puigdomènech Badia, Mehdi Mirza, Alex Graves, Timothy P. Lillicrap, Tim Harley, David Silver, Koray Kavukcuoglu (https://arxiv.org/abs/1602.01783)
+\bibitem{b2} Human-level control through deep reinforcement learning - Volodymyr Mnih, Koray Kavukcuoglu, David Silver, Andrei A. Rusu, Joel Veness, Marc G. Bellemare (https://www.nature.com/articles/nature14236)
+\bibitem{b3} IMPALA: Scalable Distributed Deep-RL with Importance Weighted Actor-Learner Architectures - Lasse Espeholt, Hubert Soyer, Remi Munos, Karen Simonyan, Volodymir Mnih, Tom Ward, Yotam Doron, Vlad Firoiu, Tim Harley, Iain Dunning, Shane Legg, Koray Kavukcuoglu (https://arxiv.org/abs/1802.01561)
+\bibitem{b4} Proximal Policy Optimization Algorithms - John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, Oleg Klimov(https://arxiv.org/abs/1707.06347)
+\bibitem{b5} Planning to Explore via Self-Supervised World Models - Ramanan Sekar, Oleh Rybkin, Kostas Daniilidis, Pieter Abbeel, Danijar Hafner, Deepak Pathak (https://arxiv.org/abs/2005.05960)
+\bibitem{b6} Sample Efficient Actor-Critic with Experience Replay - Ziyu Wang, Victor Bapst, Nicolas Heess, Volodymyr Mnih, Remi Munos, Koray Kavukcuoglu, Nando de Freitas (https://arxiv.org/abs/1611.01224)
+\bibitem{b7} Trust Region Policy Optimization - John Schulman, Sergey Levine, Philipp Moritz, Michael I. Jordan, Pieter Abbeel (https://arxiv.org/abs/1502.05477)
+\end{thebibliography}
+\vspace{12pt}
+
+\end{document}
