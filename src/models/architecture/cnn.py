@@ -143,6 +143,7 @@ class CNN(keras.Model):
         # value output layer (Critic)
         self.values = layers.Dense(units=1, name='value')
 
+    @tf.function
     def call(self, inputs):
         # converts RGB image to grayscale
         # x = tf.image.rgb_to_grayscale(inputs)

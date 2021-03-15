@@ -62,8 +62,8 @@ class MasterAgent():
         self.update_freq = update_freq
         self.gamma = gamma
         self.model_path = os.path.join(self.save_dir, 'model_a3c')
-        self.global_model = CNN(self.action_size, self.input_shape)
-        # self.global_model = CnnGru(self.action_size, self.input_shape)
+        # self.global_model = CNN(self.action_size, self.input_shape)
+        self.global_model = CnnGru(self.action_size, self.input_shape)
 
         # self.opt = tf.compat.v1.train.AdamOptimizer(lr, epsilon=1e-05, use_locking=True)
         self.opt = keras.optimizers.Adam(learning_rate=self.lr)
@@ -208,8 +208,8 @@ class Worker(threading.Thread):
         self._last_keys = 0
 
         self.global_model = global_model
-        self.local_model = CNN(self.action_size, self.input_shape)
-        # self.local_model = CnnGru(self.action_size, self.input_shape)
+        # self.local_model = CNN(self.action_size, self.input_shape)
+        self.local_model = CnnGru(self.action_size, self.input_shape)
         self.opt = opt_fn
         self.loss_fn = loss_fn
         self.ep_loss = 0.0
