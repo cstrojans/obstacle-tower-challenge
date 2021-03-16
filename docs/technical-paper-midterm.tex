@@ -37,7 +37,7 @@ pranshur@usc.edu}
 \maketitle
 
 \begin{abstract}
-This paper talks about the "Obstacle Tower Challenge" game. It is a procedurally generated environment consisting of multiple floors to be solved by a learning agent. To tackle this challenge, the following problems must be solved: computer vision, locomotion skills, high-level planning, and generalization. The game is designed in such a way that it increases in difficulty as the agent progresses.
+This paper talks about the "Obstacle Tower Challenge" game. It is an environment which is procedurally generated, consisting of multiple floors to be solved by a learning agent. To tackle this challenge, the following problems must be solved: computer vision, locomotion skills, high-level planning, and generalization. As the agent progresses, the difficulty of the game keeps on increasing.
 
 Within each floor, the goal of the agent is to arrive at the set of stairs leading to the next level of the tower. These floors are composed of multiple rooms, each of which can contain its own unique challenges. Furthermore, each floor contains a number of procedurally generated elements, such as visual appearance, puzzle configuration, and floor layout. This ensures that in order for an agent to be successful at the Obstacle Tower task, they must be able to generalize to new and unseen combinations of conditions.
 \end{abstract}
@@ -47,11 +47,12 @@ Reinforcement learning, Asynchronous Advantage Actor-Critic (A3C), Proximal Poli
 \end{IEEEkeywords}
 
 \section{Introduction}
-While developing Artificial intelligence-based methods to advance the field, it is worthwhile to have the ability to measure the performance of each of the methods. For tree search and reinforcement learning methods, the benchmarks of choice have often been based on games. Historically, games such as Checkers and Chess were prominent in AI research. They are responsible for many of the new methods which were invented later in the field of Artificial Intelligence. For example, the first reinforcement learning algorithm was developed to play Checkers.
+Despite the great theoretical and engineering work being put into developing new algorithms, many researchers were still focused on using decades-old home console games such as Pong, Breakout, or Ms. PacMan. Aside from containing crude graphics and gameplay mechanics, these games are also completely deterministic, meaning that a player (or computer) could memorize a series of button presses, and even be able to solve them blindfolded. 
 
-In the past twenty years, video games have increasingly been used as AI benchmarks. In contrast to classic board games, video games require more frequent decision-making, often in real-time settings. They may or may not also have some combination of stochasticity, convoluted interaction rules, and exponential branching factors. For example, if you consider 2D arcade games they have a limited branching factor, which gives us a low-dimensional observation space. 
+Given these drawbacks, Unity developed a procedurally generated environment called the Obstacle Tower Challenge that can be a benchmark that pushes modern AI algorithms in reinforcement learning to their limits. Specifically, the focus was on AI agents vision, control, planning, and generalization abilities. 
+The goal of the challenge is to benchmark smarter AI agents. Better agents means better NPCs, more thorough playtesting, and ultimately more engaging player experiences.
 
-However, more recently, with advances in the field of reinforcement learning, a new generation of video-game-based AI agents have become possible. The agents learn to act based on the raw pixel input provided to them. Furthermore, with the advances in the field of deep learning, which is a field that excels at dealing with complex high-dimensional input, such as screen images, and also because of the advent of hardware accelerators such as GPU's (Graphical Processing Units), TPU's (Tensor Processing Units), etc, training a reinforcement learning agent has become commonplace.
+More recently, with advances in the field of reinforcement learning, a new generation of video-game-based AI agents have become possible. The agents learn to act based on the raw pixel input provided to them. Furthermore, with the advances in the field of deep learning, which is a field that excels at dealing with complex high-dimensional input, such as screen images, and also because of the advent of hardware accelerators such as GPU's (Graphical Processing Units), TPU's (Tensor Processing Units), etc, training a reinforcement learning agent has become commonplace.
 
 In particular, the Arcade Learning Environment (ALE), which is based on an emulation of the Atari 2600 video game console, became one of the more widely used reinforcements learning benchmark after it was demonstrated that Deep Q-learning could learn to play many of these games at a human-competitive level [Bellemare et al., 2013; Mnih et al., 2015].
 
@@ -68,15 +69,22 @@ Obstacle Tower was developed specifically to overcome the limitations of previou
 
 \textbf{Procedurally generated visuals}: There are multiple levels of variation in the environment, including the textures, lighting conditions, and object geometry. Therefore agents must be able to generalize their understanding of objects’ appearance.
 
+
+
 \section{Related Works}
 
 The Obstacle Tower game has been introduced as a challenge to the community of AI developers by Unity. Here, we list the top three winners of that challenge which Unity has released:
 \begin{itemize}
-\item Alex won the Obstacle Tower Challenge. He trained his agent in several steps. First, he trained a classifier to identify objects (boxes, doors, etc.). This classifier was used throughout the process to tell the agent what objects it has seen in the past 50 time-steps. Then, Alex used behavioral cloning to train an agent to imitate human demonstrations. Lastly, Alex used a variant of Proximal Policy Optimization (PPO) which he calls “prierarchy” to fine-tune his behavioral cloned agent based on the game’s reward function. This variant of PPO replaces the entropy term with a KL-divergence term that keeps the agent close to the original behavior cloned policy. Alex tried a few other approaches that didn’t quite pan out – Generative Adversarial Imitation Learning (GAIL) for more sample-efficient imitation learning, CMA-ES to learn a policy from scratch, and stacking last layer features from the classifier and feeding it into the agent (instead of using the classifier’s outputs for the state).
-\item Gianni and Miha received the second position. The team’s final model was PPO with a reduced action set and a reshaped reward function. For the first floors, the team also used KL-divergence terms to induce behaviors into the agent similar to what Alex did. But was later dropped on higher floors. The team also used a sampling algorithm at the key floors to focus the actors to run more in floors and seeds where it was neither good nor bad. Later, the team used a more standard sampling at higher floors. The team did not have enough time to assess the exact benefits of each method, which they plan to do in the future. They plan to release the source code as soon as they can understand better and generalize these aspects. Lastly, the team tried world models (create a very compressed representation of the observation with an auto-encoder and build a policy using evolutionary algorithms over this space). It did not work but the team learned a lot.
-\item Songbin bagged the third price. He used the PPO algorithm implemented as part of the ML-Agents toolkit. During the challenge, his agent took actions in a sequentially coordinated fashion to achieve certain sub-tasks (for example, moving the box to a certain position). He used a gated recurrent unit (GRU) in order for the agent to make memory-backed decisions. To reduce over-fitting, dropout layers were added, and left-right flipping was also used, which is a common data augmentation method in imaging tasks. He then recorded human play and repeatedly added those experiences to the replay buffer while training. As a side effect of playing the Obstacle Tower during the challenge, Songbin has become an expert player in the game. Although the human play is brutally expensive to collect, it is of high quality and reduced the amount of simulation time needed. Songbin also tried longer sequence lengths but failed to achieve better performance (even though it was contrary to his expectation). He is still trying to figure out why it did not work. He utilized all 100 tower seeds during training with no separate validation set for evaluation. He suspected over-fitting in the model, even though he tried to reduce as much as possible.
-Lastly, although deep learning methods in computer vision, especially image classification tasks, have matured in recent years, deep reinforcement learning tasks are relatively more tricky. His top scoring agent failed to show comparable performance to human players (around floor 30). Watching AlphaGo and AlphaStar beat professional players, Songbin believes there is still a lot of room for improvement in the Obstacle Tower.
+\item Alex won the Obstacle Tower Challenge. He trained his agent in the following manner: First, he trained a classifier to identify objects such as boxes, doors, etc., and then this classifier was used throughout the process to tell the agent what objects it has seen in the past 50 time-steps. Later, Alex used behavioral cloning to train an agent to imitate human demonstrations. Finally, Alex used a variant of Proximal Policy Optimization (PPO) which he calls “prierarchy” to fine-tune his behavioral cloned agent based on the game’s reward function. This variant of PPO replaces the entropy term with a KL-divergence term that keeps the agent close to the original behavior cloned policy.
+\item Gianni and Miha received the second position. The team’s final model was PPO with a reduced action set and a reshaped reward function. For the first floors, the team also used KL-divergence terms to induce behaviors into the agent similar to what Alex did, but was later dropped on higher floors. Finally, the team used a more standard sampling at higher floors. The team did not have enough resources to thoroughly train, which they plan to do in the future.
+\item Songbin bagged the third price. He used the PPO algorithm implemented as part of the ML-Agents toolkit. During the challenge, his agent took actions in a sequentially coordinated fashion to achieve certain sub-tasks, for example, moving the box to a certain position. He used GRU's in order for the agent to make memory-backed decisions. To reduce over-fitting, techniques such as introducing dropout layers, and adding left-right flipping was done. He then recorded human play and repeatedly added those experiences to the replay buffer while training. As a side effect of playing the Obstacle Tower during the challenge, Songbin has become an expert player in the game. Although the human play is brutally expensive to collect, it is of high quality and reduced the amount of simulation time needed.
 \end{itemize}
+
+\textbf{Winner’s Approach}: The winner made use of two agents. One that solved level 1-9 and the other solved level 10 onwards. The agent that solved level 10 and above was trained with floors from 10-15. The sokoban puzzle problem was immediately solved as a result of this since the agent did not have to spend time solving the first ten floors and could focus on the puzzle alone.
+
+To make it easy to play the game as a human, a reduced action space was introduced.  The CNN architecture from IMPALA was used since it is known to have performed better in terms of generalization. By rescaling a standard initialization the Fixup initialization solves the problem of vanishing gradient. Residual networks were also trained with Fixup and were found to be equally stable. Furthermore, with proper regularization, Fixup enables residual networks without normalization to achieve state-of-the-art performance in image classification and machine translation. The state classifier was trained with fewer labeled examples by using MixMatch.
+Data augmentation was used in two scenarios by Alex: for behavior cloning by using traditional image data and while prierarchy training. With the use of mirroring data augmentation, which essentially means images and actions were imitated together, the quantity of training levels were doubled as each level had a mirror image associated with it. To resolve the problem of overfitting, data augmentation was used on the environment while training the agent with prierarchy. 
+
 
 \section{Environment}
 Obstacle Tower provides recognizable and configurable observation spaces, action spaces, and reward functions. The environment itself relies heavily on procedural generation at multiple levels of interaction. The Obstacle Tower environment uses the Unity platform and ML-Agents Toolkit [Juliani et al., 2018]. It can run on the Mac, Windows, and Linux platforms, and can be controlled via the OpenAI Gym interface for easy integration with existing DeepRL training frameworks [Brockman et al., 2016].
@@ -98,6 +106,10 @@ Obstacle Tower has two reward function configurations: sparse and dense. In the 
 
 \section{Methods (Software and Algorithms)}
 
+\begin{figure*}
+  \includegraphics[width=\textwidth,height=12cm]{6.png}
+\end{figure*}
+
 \subsection{\textbf{Asynchronous Methods for Deep Reinforcement Learning (Actor Critic Method)}}
 
 Instead of experience replay, we asynchronously execute multiple agents in parallel, on multiple instances of the environment. This parallelism also removes the correlation of the agents’ data into a more stationary process, since at any given time-step the parallel agents will be experiencing a variety of different states. This simple idea enables a much larger spectrum of fundamental on-policy RL algorithms, such as Sarsa, n-step methods, and actor-critic methods, as well as off-policy RL algorithms such as Q-learning, to be applied robustly and effectively using deep neural networks.
@@ -116,6 +128,11 @@ In addition to these, a number of complementary improvements to the neural netwo
 
 Combining other existing reinforcement learning methods or recent advances in deep reinforcement learning
 with our asynchronous framework presents many possibilities for immediate improvements to the methods we presented.
+
+\begin{figure}[htp]
+    \centering
+    \includegraphics[width=8cm]{7.png}
+\end{figure}
 
 \subsection{\textbf{Proximal Policy Optimization (PPO)}}
 
@@ -152,7 +169,44 @@ In the next section, we will be presenting our results and a detailed analysis o
 
 \section{Results and Analysis}
 
-Hardik and Pranshu please fill one page each for A3C and PPO
+We have successfully trained 2 models so far using the A3C and PPO models. Each of the models have been trained for 100 game episodes totalling ~70,000 timesteps.
+
+\begin{figure*}
+  \includegraphics[width=\textwidth,height=10cm]{8.png}
+\end{figure*}
+
+Looking at the loss graphs we learn that since these algorithms are on-policy, they need a huge amount of training to develop a meaningful policy. Although the training done so far is fairly limited, we see a steady improvement in the collected rewards. Spikes in the loss function mean that the algorithm is exploring new trajectories which is consistent with expected results of initial training for the models. 
+
+In the graphs for the A3C models below, we see a maximum reward of 0.6 which is reached very early in the training period with a gradual degradation later on. 
+
+\begin{figure}[htp]
+    \centering
+    \includegraphics[width=10cm]{1.png}
+\end{figure}
+
+\begin{figure}[htp]
+    \centering
+    \includegraphics[width=8cm]{2.png}
+\end{figure}
+
+The PPO model performs better in terms of registering lower loss values and showing fewer loss spikes. But, the overall score achieved is lesser.
+
+\begin{figure}[htp]
+    \centering
+    \includegraphics[width=8cm]{3.png}
+\end{figure}
+
+\begin{figure}[htp]
+    \centering
+    \includegraphics[width=8cm]{4.png}
+\end{figure}
+
+An interesting insight from the distributed training using thread-based parallelism shows that although we get a significant performance improvement from using multiple workers, as seen in the below graph, we reach optimal performance using 4 workers. This is against the idea that more workers means faster training. A hypothesis behind a decrease after this may be due to the increased inter-thread communication cost that happens during synchronization of weights with the master/global agent network. To put this in perspective, all the workers were created in threads on the same local machine. We expect to achieve better performance with distributed tensorflow which will enable us to employ more than 1 machine.
+
+\begin{figure}[htp]
+    \centering
+    \includegraphics[width=7cm]{5.png}
+\end{figure}
 
 \section{Limitations}
 
