@@ -34,13 +34,13 @@ Reinforcement learning, Asynchronous Advantage Actor-Critic (A3C), Proximal Poli
 \section{Introduction}
 Regardless of the improvements and progress made in instrumenting new algorithms, most scientists are still focusing on arcane methods of playing games such as Breakout and other similar games. The issue with these games is that the graphics involved are pretty rudimentary, and easy to predict. The algorithms might as well overfit to the game and mark it as solved. Therefore they are uninteresting and not fruitful.
 
-Given these drawbacks, Unity developed a procedurally generated environment called the Obstacle Tower Challenge \cite{Juliani-et-al} that would serve as an interesting tool which can be used as a yardstick to measure the progress made in contemporary artificial intelligence algorithms in reinforcement learning to their limits. Currently, the focus is on the agents computer vision capabilities, locomotion skills, abstract thinking, and the way they generalize. Better agents means better non-player-characters, thorough testing, and finally more engaging player experiences.
+Given these drawbacks, Unity developed a procedurally generated environment called the Obstacle Tower Challenge \cite{Juliani-et-al} that would serve as an interesting tool which can be used as a yardstick to measure the progress made in contemporary artificial intelligence algorithms in reinforcement learning to their limits. Currently, the focus is on the agent's computer vision capabilities, locomotion skills, abstract thinking, and the way they generalize. Better agents means better non-player-characters, thorough testing, and finally more engaging player experiences.
 
 Arcade Learning Environment (ALE) is one of the most sought after game environments used in reinforcement learning research \cite{Bellemare-et-al}\cite{Mnih-2015} so far. Such games are two-dimensional, have low-pixel graphics resolutions, operate in a fixed layout, have limited branching factors and do not require agents to be trained for generalization.
 
 The Obstacle Tower Challenge game is a complete overhaul of its predecessor, the ALE. It is a high-fidelity game that operates in 3D, generates new visuals and themed layouts with each level and game using "Procedural Content Generation", has a high branching factor and requires agents to learn to solve sub-tasks. Although this game is more advanced than before, this adds those many challenges to develop agents that can match human level performance. RL researchers are focusing on developing autonomous agents that can perceive more information, strategize as well as control low-level actions to achieve high scores in this game.
 
-The goal of this project is to develop and train an AI agent using state-of-the-art reinforcement learning techniques that can successfully maneuver the OTC game and solve an above-average number of levels. This project will also help the author's gain hands-on knowledge about generalization in AI and its challenges.
+The goal of this project is to develop and train an AI agent using state-of-the-art reinforcement learning techniques that can successfully maneuver the OTC game and solve an above-average number of levels. This project will also help the authors gain hands-on knowledge about generalization in AI and its challenges.
 
 The rest of this paper is structured in the following way. It starts with a discussion of past approaches to solving the challenge and how each of them fared. It then dives into environment characteristics. The next part discusses current progress in methods used to solve the challenge and the final two sections discuss results and limitations.
 
@@ -50,13 +50,13 @@ Since this game is relatively new, our literature survey around the game and mod
 
 Gianni et al. \cite{Unity-tech-blog} investigated the use of KL-divergence terms for behavioral cloning for initial levels, but due to poor results in later levels dropped the idea. They also tried training an agent by using world models but that didn't work too. They then used a reduced action space and reshaped their reward function to boost training time. They used PPO to train the agent on these updated parameters. This method worked well and helped them place second in the final challenge. 
 
-Songbin \cite{Unity-tech-blog} used PPO + behavioral cloning for training the agent. He used the PPO version implemented in the ML-Agents toolkit and used a replay buffer for incorporating human play in training. The NN model he used included a gated recurrent unit (GRU) to help the agent learn temporal dependencies of actions. Some other tricks that were used in the NN were dropout, data augmentation and different sequence lengths. His best top scoring agent was able to achieve high floors in the high 20s. 
+Songbin \cite{Unity-tech-blog} used PPO + behavioral cloning for training the agent. He used the PPO version implemented in the ML-Agents toolkit and used a replay buffer for incorporating human play in training. The NN model he used included a gated recurrent unit (GRU) to help the agent learn temporal dependencies of actions. Some other tricks that were used in the NN were Dropout, data augmentation and different sequence lengths. His top scoring agent was able to achieve high floors in the high 20s. 
 
-The winner, Alex \cite{Pickled-ml-blog} made use of two agents. One that solved level 1-9 and the other solved level 10 onwards. The agent that solved level 10 and above was trained with floors from 10-15. The Sokoban puzzle problem was immediately solved as a result of this since the agent did not have to spend time solving the first ten floors and could focus on the puzzle alone.
+The winner, Alex \cite{Pickled-ml-blog} made use of two agents. One that solved levels 1-9 and the other solved level 10 onwards. The agent that solved level 10 and above was trained with floors from 10-15. The Sokoban puzzle problem was immediately solved as a result of this since the agent did not have to spend time solving the first ten floors and could focus on the puzzle alone.
 
-To make it easy to play the game as a human, a reduced action space was introduced.  The CNN architecture from IMPALA was used since it is known to have performed better in terms of generalization. By rescaling a standard initialization the Fixup initialization \cite{Zhang-et-al} solves the problem of vanishing gradient. Residual networks were also trained with Fixup and were found to be equally stable. The state classifier was trained with fewer labeled examples by using MixMatch.
+To make it easy to play the game as a human, a reduced action space was introduced.  The CNN architecture from IMPALA was used since it is known to have performed better in terms of generalization. By rescaling a standard initialization, the Fixup initialization \cite{Zhang-et-al} solves the problem of vanishing gradient. Residual networks were also trained with Fixup and were found to be equally stable. The state classifier was trained with fewer labeled examples by using MixMatch. \cite{Berthelot}
 
-Data augmentation was used in two scenarios by Alex: for behavior cloning by using traditional image data and while "prierarchy" training. With the use of mirroring data augmentation, which essentially means images and actions were imitated together, the quantity of training levels were doubled as each level had a mirror image associated with it. To resolve the problem of overfitting, data augmentation was used on the environment while training the agent with "prierarchy". 
+Data augmentation was used in two scenarios by Alex: for behavior cloning by using traditional image data and during "prierarchy" training. With the use of mirroring data augmentation, which essentially means images and actions were imitated together, the quantity of training levels were doubled as each level had a mirror image associated with it. To resolve the problem of overfitting, data augmentation was used on the environment while training the agent with "prierarchy". 
 
 
 \section{Environment}
@@ -263,44 +263,35 @@ An interesting insight from the distributed training in Fig. \ref{multi_worker_g
 
 \section{Limitations}
 
-Actor-critic methods combine policy gradient methods with a learned value function. With DQN, we only had the learned value function — the Q-function — and the "policy" we followed was simply taking the action that maximized the Q-value at each step. With A3C, as with the rest of actor-critic methods, we learn two different functions: the policy (or "actor"), and the value (the "critic"). The way the policy adjusts the action probabilities relies on the current advantage, which in turn is an estimate. It is important to note that it is also dependent on the value function updates with respect to the experience and rewards collected by following the policy.
+% Actor-critic methods combine policy gradient methods with a learned value function. With DQN, we only had the learned value function — the Q-function — and the "policy" we followed was simply taking the action that maximized the Q-value at each step. With A3C, as with the rest of actor-critic methods, we learn two different functions: the policy (or "actor"), and the value (the "critic"). The way the policy adjusts the action probabilities relies on the current advantage, which in turn is an estimate. It is important to note that it is also dependent on the value function updates with respect to the experience and rewards collected by following the policy.
 
 
-The key to A3C is the parallelized architecture which is also asynchronous by design: plethora of actor-learners are deployed to separate instantiations of the environment; interaction is performed by all these agents, and as stated earlier they asynchronously push the gradients to a central "crucial" network (an idea borrowed from DQN). Surprisingly, Open AI showed that with A2C asynchronicity is not the primary reason for increased performance. In fact, they showed that it reduces sample efficiency.
+% The key to A3C is the parallelized architecture which is also asynchronous by design: plethora of actor-learners are deployed to separate instantiations of the environment; interaction is performed by all these agents, and as stated earlier they asynchronously push the gradients to a central "crucial" network (an idea borrowed from DQN). Surprisingly, Open AI showed that with A2C asynchronicity is not the primary reason for increased performance. In fact, they showed that it reduces sample efficiency.
 
-The drawbacks for A3C and A2C are environments with complex tasks, and limited observability, and increased delays between taking an action and receiving some meaningful reward. Naturally, researchers have pondered on this idea and several sub-fields in the domain of reinforcement learning have emerged.
+The drawbacks for A3C and A2C are environments with complex tasks, limited observability, and increased delays between taking an action and receiving some meaningful reward. Naturally, researchers have pondered on this idea and several sub-fields in the domain of reinforcement learning have emerged.
 
-Open AI introduced PPO in 2017 and within no time, it has risen to become the most popular reinforcement learning algorithm overtaking Deep-Q learning. The way it approaches the problem is unique and profound. It starts of by collecting a mini batch of experiences interacting with the environment around the agent. Next, it uses a batch-update to update its decision-making policy. These batches are disposed immediately after the policy is updated, and a fresh batch is collected next. This forms the critical part of why it is an "on-policy learning" approach because similar to other "on-line gradient-descent"  algorithms, the metric, here the policy, gets update frequently in the form a stream.
+% Open AI introduced PPO in 2017 and within no time, it has risen to become the most popular reinforcement learning algorithm overtaking Deep-Q learning. The way it approaches the problem is unique and profound. It starts of by collecting a mini batch of experiences interacting with the environment around the agent. Next, it uses a batch-update to update its decision-making policy. These batches are disposed immediately after the policy is updated, and a fresh batch is collected next. This forms the critical part of why it is an "on-policy learning" approach because similar to other "on-line gradient-descent"  algorithms, the metric, here the policy, gets update frequently in the form a stream.
 
-Moreover, the differences between the updated policy, and immediate-previous-policy is not very significant. This means less variance in training. However, we will still incur the cost of some bias. Nevertheless, we get a smoother training and we can ensure that the agent does not go down a path which is unrecoverable.
+% Moreover, the differences between the updated policy, and immediate-previous-policy is not very significant. This means less variance in training. However, we will still incur the cost of some bias. Nevertheless, we get a smoother training and we can ensure that the agent does not go down a path which is unrecoverable.
 
 There are methods such as policy gradient methods which are less sample efficient than Q-learning. This is because you only use the data once after which it is discarded.
 
 The way reinforcement learning models the problem requires several conditions:
+\begin{enumerate}
+    \item \textbf{Ability to quantify all the variables of the environment}: In the real world, it is natural to expect that we have access to either partial or no information. Information might also be inaccurate.
 
-At each time step, we have the ability to quantify all the variables of the environment. This is not the case in real world; because it is natural to expect that we will always have access to partial information. Not only that, but the information which we cannot access, might be inaccurate and therefore might need further clarification.
+    \item \textbf{Mathematical expression of reward}: How can we distinguish between good reward and bad reward? Formulating rewards to enable meaningful learning is seldom observed in human learning experiences.
 
-Let us say I am working on a path planning problem which involves autonomous vehicle, then the question which practically arises is, how can one express the reward mathematically? How can we distinguish between good reward and bad reward? Scientists and researchers have pondered upon this idea, and there is a relatively nascent field called inverse reinforcement learning.
-
-Moreover, we cannot keep exploring without any negative repercussions. We cannot afford to commit mistakes indefinitely. Extending on previous example, how many times will the vehicle crash before we can make any meaningful progress?
-
-Nonetheless, simulated environments are still useful. They have provided us with significant play-ground, where we can train an agent and translate it to the real-world.
-
-The number of times we need to run trials before we can produce a practical model is far too many. This is fine if the task under consideration is simple and easy to solve, actions are discrete, and the information present is immediately available. Sometimes, problem formulation is so complex that we must balance the precision of our simulator with both training time and real-time performance constraints.
-
-From the above discussion, it should be clear by now, that the most advances which we have seen in reinforcement learning has come from simulated and controlled environments. For instance, DeepMind's research on Atari and AlphaGo fall under this category. There is still enormous amount of research required to overcome the limitations imposed by adapting deep RL to work seamlessly in real-time agents.
-
-Reinforcement learning needs a ton of data or epochs. This is equivalent to thousands of computing hours in a simulator. Such a long time is necessary to learn what humans can usually grasp in a few hours.
-
-For example, Rainbow DQN plays a number of games with the same engine and picks the best algorithm as a comparison. Such an algorithm requires 44 million frames to learn to play with superhuman capabilities. RainbowDQN passes the 100 percent threshold (just above human capabilities) at about 18 million frames. In other words, this is about 83 hours of the play experience. To this number, one should add the time for training the model.
-
-That’s a lot of time! Especially when one considers that Atari games can be picked by a teenager within a few minutes.
-
-In the most common version of reinforcement learning, action sets are discrete. In many realistic use cases, agents perform actions in a continuous space. Making a discrete action, continuous is not only non-trivial but will also increase the number of (discrete) actions the agent will have to deal with during policy optimization. This, in turn, affects training time and performance.
-
-Local optima are harder than those found in deep learning: If one thinks that it can be hard for Stochastic Gradient Descent to get out of local optima, then she should think twice. The level of complexity reached by the optimization procedure of reinforcement learning is much higher than deep learning. It is much more difficult for a reinforcement learning agent to escape local optima.
-
-This is due to the design of the reward function and to the state-action estimator itself (which is a deep neural network).
+    \item \textbf{Simulation}: Learning environments have the luxury to have commit mistakes indefinitely without negative consequences. This is not so in real life.
+    
+    \item \textbf{Increased training time}: This is fine if the task under consideration is simple and easy to solve, actions are discrete, and the information present is immediately available. Sometimes, problem formulation is so complex that we must balance the precision of our simulator with both training time and real-time performance constraints.
+    
+    \item \textbf{High data requirement}: This is equivalent to thousands of computing hours in a simulator. This is needed to match human level performance even in trivial tasks. For example, Rainbow DQN plays a number of games with the same engine and picks the best algorithm as a comparison. Such an algorithm requires 44 million frames to learn to play with superhuman capabilities. Rainbow DQN passes the 100\% threshold (just above human capabilities) at about 18 million frames. In other words, this is about 83 hours of the play experience. To this number, one should add the time for training the model.
+    
+    \item \textbf{Discrete action spaces}: In many real use cases, agents perform actions in a continuous space. Making a discrete action continuous is not only non-trivial but will also increase the number of (discrete) actions the agent will have to deal with during policy optimization. This, in turn, affects training time and performance.
+    
+    \item \textbf{Local Optima}: It is easier for agents to get stuck in local minima. 
+\end{enumerate}
 
 \section{Future Work}
 
@@ -349,12 +340,13 @@ We would like to thank Professor Dr. Michael Zyda and the TA's for allowing us t
 \bibitem{Juliani-et-al} Juliani, Arthur \& Khalifa, Ahmed \& Berges, Vincent-Pierre \& Harper, Jonathan \& Teng, Ervin \& Henry, Hunter \& Crespi, Adam \& Togelius, Julian \& Lange, Danny. (2019). Obstacle Tower: A Generalization Challenge in Vision, Control, and Planning. 2684-2691. 10.24963/ijcai.2019/373.
 \bibitem{Bellemare-et-al} Bellemare, Marc \& Naddaf, Yavar \& Veness, Joel \& Bowling, Michael. (2012). The Arcade Learning Environment: An Evaluation Platform for General Agents. Journal of Artificial Intelligence Research. 47. 10.1613/jair.3912.
 \bibitem{Mnih-2015} Mnih, Volodymyr et al. (2015). Human-level control through deep reinforcement learning. Nature. 518. 529-33. 10.1038/nature14236.
-\bibitem{Unity_ml_agents_tech_blog} "Unity Machine Learning Agents" Unity Technologies Blog, Unity Technologies, 1 Jan. 2021, unity.com/products/machine-learning-agents
-\bibitem{Open-ai-gym} "Open-ai-gym" Open AI Blog, Open AI, 1 Jan. 2021, gym.openai.com
-\bibitem{Sokoban} "Sokoban" Wikipedia website, Wikipedia, 26 Feb. 2021, en.wikipedia.org/wiki/Sokoban
 \bibitem{Unity-tech-blog} “Announcing the Obstacle Tower Challenge Winners and Open Source Release.” Unity Technologies Blog, Unity Technologies, 14 Aug. 2019, blogs.unity3d.com/2019/08/07/announcing-the-obstacle-tower-challenge-winners-and-open-source-release/.
 \bibitem{Pickled-ml-blog} "Competing in the Obstacle Tower Challenge" Pickled-ml-blog, Freelancer blog, 24 Jul. 2019, blog.aqnichol.com/2019/07/24/competing-in-the-obstacle-tower-challenge/
 \bibitem{Zhang-et-al} Zhang, Hongyi, Yann N. Dauphin, and Tengyu Ma. "Fixup initialization: Residual learning without normalization." arXiv preprint arXiv:1901.09321 (2019).
+\bibitem{Berthelot} Berthelot, David, Nicholas Carlini, Ian Goodfellow, Nicolas Papernot, Avital Oliver, and Colin Raffel. "Mixmatch: A holistic approach to semi-supervised learning." arXiv preprint arXiv:1905.02249 (2019).
+\bibitem{Unity_ml_agents_tech_blog} "Unity Machine Learning Agents" Unity Technologies Blog, Unity Technologies, 1 Jan. 2021, unity.com/products/machine-learning-agents
+\bibitem{Open-ai-gym} "Open-ai-gym" Open AI Blog, Open AI, 1 Jan. 2021, gym.openai.com
+\bibitem{Sokoban} "Sokoban" Wikipedia website, Wikipedia, 26 Feb. 2021, en.wikipedia.org/wiki/Sokoban
 \bibitem{Mnih-et-al-2016} Mnih, Volodymyr, Adria Puigdomenech Badia, Mehdi Mirza, Alex Graves, Timothy Lillicrap, Tim Harley, David Silver, and Koray Kavukcuoglu. "Asynchronous methods for deep reinforcement learning." In International conference on machine learning, pp. 1928-1937. PMLR, 2016.
 \bibitem{Schulman-et-al} Schulman, John \& Wolski, Filip \& Dhariwal, Prafulla \& Radford, Alec \& Klimov, Oleg. (2017). Proximal Policy Optimization Algorithms.
 \bibitem{Pathak-et-al} Pathak, Deepak, Pulkit Agrawal, Alexei A. Efros, and Trevor Darrell. "Curiosity-driven exploration by self-supervised prediction." In International Conference on Machine Learning, pp. 2778-2787. PMLR, 2017.
