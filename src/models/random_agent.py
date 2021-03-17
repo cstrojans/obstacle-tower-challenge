@@ -25,15 +25,15 @@ class RandomAgent:
     def __init__(self, env_path, train=False, evaluate=False, eval_seeds=[], max_eps=100, save_dir=None):
         if train:
             self.env = ObstacleTowerEnv(
-                env_path, worker_id=0, retro=True, realtime_mode=False, config=train_env_reset_config)
+                env_path, worker_id=0, retro=False, realtime_mode=False, config=train_env_reset_config)
         else:
             if evaluate:
                 self.env = ObstacleTowerEnv(
-                    env_path, worker_id=0, retro=True, realtime_mode=False, config=eval_env_reset_config)
+                    env_path, worker_id=0, retro=False, realtime_mode=False, config=eval_env_reset_config)
                 self.env = ObstacleTowerEvaluation(self.env, eval_seeds)
             else:
                 self.env = ObstacleTowerEnv(
-                    env_path, worker_id=0, retro=True, realtime_mode=True, config=eval_env_reset_config)
+                    env_path, worker_id=0, retro=False, realtime_mode=True, config=eval_env_reset_config)
         self.max_episodes = max_eps
         self.global_moving_average_reward = 0
         self.save_dir = save_dir
@@ -84,16 +84,16 @@ class RandomAgent:
         done = False
         step_counter = 0
         reward_sum = 0
-        state = self.env.reset()  # (84, 84, 3)
+        obs = self.env.reset()
+        state, _, _, _ = obs
 
         try:
             while not done:
                 action = self.env.action_space.sample()
                 obs, reward, done, info = self.env.step(action)
                 reward_sum += reward
-                if not self.evaluate:
-                    print("{}. Reward: {}, action: {}".format(
-                        step_counter, reward_sum, action_space.get_action_meaning(action)))
+                print("{}. Reward: {}, action: {}".format(
+                    step_counter, reward_sum, action_space.get_action_meaning(action)))
                 step_counter += 1
         except KeyboardInterrupt:
             print("Received Keyboard Interrupt. Shutting down.")
