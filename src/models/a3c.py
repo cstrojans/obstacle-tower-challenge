@@ -65,13 +65,9 @@ class MasterAgent():
         # self.global_model = CNN(self.action_size, self.input_shape)
         self.global_model = CnnGru(self.action_size, self.input_shape)
 
-        # self.opt = tf.compat.v1.train.AdamOptimizer(lr, epsilon=1e-05, use_locking=True)
-        # self.opt = keras.optimizers.Adam(learning_rate=self.lr)
-        
         lr_schedule = keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=self.lr, decay_steps=1000, decay_rate=0.9)
-        self.opt = keras.optimizers.RMSprop(learning_rate=lr_schedule)
-        
-        self.loss_fn = keras.losses.Huber()
+        # self.opt = keras.optimizers.RMSprop(learning_rate=lr_schedule)
+        self.opt = keras.optimizers.Adam(learning_rate=lr_schedule, epsilon=1e-05)
 
         vec = np.random.random(self.input_shape)  # (84, 84, 3)
         vec = np.expand_dims(vec, axis=0)  # (1, 84, 84, 3)
@@ -93,7 +89,6 @@ class MasterAgent():
                           self._action_lookup,
                           self.global_model,
                           self.opt,
-                          self.loss_fn,
                           self.max_eps,
                           self.update_freq,
                           self.gamma,
@@ -108,12 +103,19 @@ class MasterAgent():
 
         # record episode reward to plot
         moving_average_rewards = []
+        losses = []
         while True:
-            reward = res_queue.get()
-            if reward is not None:
-                moving_average_rewards.append(reward)
+            result = res_queue.get()
+            if result:
+                reward, loss = result
             else:
                 break
+            if reward is None or not loss:
+                break
+            else:
+                moving_average_rewards.append(reward)
+                losses.append(loss)
+        
         for w in workers:
             w.join()
 
@@ -121,25 +123,38 @@ class MasterAgent():
         print("\nTraining complete. Time taken = {} secs".format(
             end_time - start_time))
 
+        """
         plt.plot(moving_average_rewards)
         plt.ylabel('Moving average episode reward')
         plt.xlabel('Step')
-        plt.savefig(os.path.join(self.save_dir,
-                                 'model_a3c_moving_average.png'))
+        plt.savefig(os.path.join(self.save_dir, 'model_a3c_moving_average.png'))
+        """
+
+        fig, (ax1, ax2) = plt.subplots(nrows=2, ncols=1)
+        fig.suptitle('A3C Model')
+
+        ax1.plot(range(1, len(moving_average_rewards) + 1), moving_average_rewards)
+        ax1.set_title('Reward vs Timesteps')
+        ax1.set(xlabel='Episodes', ylabel='Reward')
+
+        ax2.plot(range(1, len(losses) + 1), losses)
+        ax2.set_title('Loss vs Timesteps')
+        ax2.set(xlabel='Episodes', ylabel='Loss')
+        
+        fig.tight_layout()
+        fig.savefig(os.path.join(self.save_dir, 'model_a3c_moving_average.png'))
 
         # save the trained model to a file
         print('Saving global model to: {}'.format(self.model_path))
         keras.models.save_model(self.global_model, self.model_path)
-        # self.global_model.save_weights('model_weights', save_format='tf')
+
         self.env.close()
 
     def play_single_episode(self):
         """ have the trained agent play a single game """
         action_space = ActionSpace()
         print('Loading model from: {}'.format(self.model_path))
-        model = keras.models.load_model(self.model_path, compile=True)
-        # model = CnnGru(self.action_size, self.input_shape)
-        # model.load_weights('model_weights')
+        model = keras.models.load_model(self.model_path, compile=False)
         print("Playing single episode...")
         done = False
         step_counter = 0
@@ -151,12 +166,13 @@ class MasterAgent():
             while not done:
                 policy, _ = model(tf.convert_to_tensor(
                     np.expand_dims(state, axis=0), dtype=tf.float32))
-                action_index = np.argmax(policy)
+                action_index = np.random.choice(self.action_size, p=np.squeeze(policy))
                 action = self._action_lookup[action_index]
 
-                obs, reward, done, _ = self.env.step(action)
-                state, _, _, _ = obs
-                reward_sum += reward
+                for i in range(4): # frame skipping
+                    obs, reward, done, _ = self.env.step(action)
+                    state, _, _, _ = obs
+                    reward_sum += reward
 
                 print("{}. Reward: {}, action: {}".format(step_counter,
                                                           reward_sum, action_space.get_action_meaning(action)))
@@ -184,7 +200,7 @@ class Worker(threading.Thread):
     global_steps = 0
     save_lock = threading.Lock()
 
-    def __init__(self, action_size, action_lookup, global_model, opt_fn, loss_fn, max_eps,
+    def __init__(self, action_size, action_lookup, global_model, opt_fn, max_eps,
                  update_freq, gamma, result_queue, idx, env_path, save_dir):
         super(Worker, self).__init__()
         self.result_queue = result_queue
@@ -203,12 +219,10 @@ class Worker(threading.Thread):
         # self.local_model = CNN(self.action_size, self.input_shape)
         self.local_model = CnnGru(self.action_size, self.input_shape)
         self.opt = opt_fn
-        self.loss_fn = loss_fn
         self.ep_loss = 0.0
         self.max_eps = max_eps
         self.update_freq = update_freq
         self.gamma = gamma
-        # smallest number such that 1.0 + eps != 1.0
         self.eps = np.finfo(np.float32).eps.item()
         self.model_path = os.path.join(self.save_dir, 'model_a3c')
 
@@ -222,15 +236,18 @@ class Worker(threading.Thread):
             if reward >= 1:  # prioritize crossing a floor/level - between [1, 4]
                 reward += (new_health / 10000)
             elif new_health > self._last_health:  # found time orb
-                reward = 0.1
+                reward += 1
 
             if new_keys > self._last_keys:  # found a key
-                reward = 1
+                reward += 1
 
         return reward
 
     def run(self):
         mem = Memory()
+        rewards = []
+        entropy_term = 0
+
         while Worker.episode_count < self.max_eps:
             ep_reward = 0.
             ep_steps = 0
@@ -241,63 +258,62 @@ class Worker(threading.Thread):
             state, _, _, _ = obs
 
             with tf.GradientTape() as tape:
-                for timestep in range(1, self.update_freq):
+                for timestep in range(self.update_freq):
                     state = tf.convert_to_tensor(state)
                     state = tf.expand_dims(state, axis=0)
                     action_probs, critic_value = self.local_model(state)
+                    entropy = -np.sum(action_probs * np.log(action_probs))
+                    entropy_term += entropy
 
                     action_index = np.random.choice(
                         self.action_size, p=np.squeeze(action_probs))
                     action = self._action_lookup[action_index]
 
-                    for i in range(4):
+                    for i in range(4): # frame skipping
                         obs, reward, done, _ = self.env.step(action)
                         state, new_keys, new_health, cur_floor = obs
+                        
+                        reward = self.get_updated_reward(reward, new_health, new_keys, done)
+                        self._last_health = new_health
+                        self._last_keys = new_keys
+                        
                         ep_reward += reward
                         ep_steps += 1
                         Worker.global_steps += 1
 
-                    # reward = self.get_updated_reward(reward, new_health, new_keys, done)
-                    # self._last_health = new_health
-                    # self._last_keys = new_keys
-
                     mem.store(action_prob=action_probs[0, action_index],
                               value=critic_value[0, 0],
                               reward=reward)
-                    # ep_reward += reward
-                    # ep_steps += 1
-                    # Worker.global_steps += 1
 
                     if done:
+                        # backpropagation
+                        total_loss = self.local_model.compute_loss(mem, state, done, self.gamma, self.eps, entropy_term)
+                        grads = tape.gradient(total_loss, self.local_model.trainable_variables)  # calculate local gradients
+                        self.opt.apply_gradients(zip(grads, self.global_model.trainable_variables))  # send local gradients to global model
+                        self.local_model.set_weights(self.global_model.get_weights())  # update local model with new weights
+                        
+                        self.ep_loss += total_loss
                         break
-                
-                Worker.running_reward = 0.05 * ep_reward + (1 - 0.05) * Worker.running_reward
-
-                # backpropagation
-                total_loss = self.local_model.compute_loss(mem, state, done, self.gamma, self.eps, self.loss_fn)
-                grads = tape.gradient(total_loss, self.local_model.trainable_variables)  # calculate local gradients
-                self.opt.apply_gradients(zip(grads, self.global_model.trainable_variables))  # send local gradients to global model
-                self.local_model.set_weights(self.global_model.get_weights())  # update local model with new weights
-                
-                self.ep_loss += total_loss
-                mem.clear()
+            
+            mem.clear()
+            rewards.append(ep_reward)
+            Worker.running_reward = sum(rewards[-10:]) / 10
             
             Worker.episode_count += 1
-            Worker.running_reward = record(Worker.episode_count,
-                                        ep_reward,
-                                        self.worker_idx,
-                                        Worker.running_reward,
-                                        self.result_queue,
-                                        self.ep_loss,
-                                        ep_steps,
-                                        Worker.global_steps)
+            record(Worker.episode_count,
+                   ep_reward,
+                   self.worker_idx,
+                   Worker.running_reward,
+                   self.result_queue,
+                   self.ep_loss,
+                   ep_steps,
+                   Worker.global_steps)
 
             # use a lock to save local model and to print to prevent data races.
             if ep_reward > Worker.best_score:
                 with Worker.save_lock:
                     print('\nSaving best model to: {}, episode score: {}\n'.format(self.model_path, ep_reward))
                     keras.models.save_model(self.global_model, self.model_path)
-                    # self.global_model.save_weights('model_weights', save_format='tf')
                     Worker.best_score = ep_reward
                 
         self.result_queue.put(None)

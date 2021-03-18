@@ -109,26 +109,20 @@ class ActionSpace:
         )
 
 
-def record(episode, episode_reward, worker_idx, global_ep_reward, result_queue, total_loss, global_steps):
-    """Helper function to store score and print statistics.
+def record(episode, episode_reward, worker_idx, global_ep_reward, result_queue, total_loss, ep_steps, global_steps):
+    """prints statistics
     Args:
-      episode: Current episode
-      episode_reward: Reward accumulated over the current episode
-      worker_idx: Which thread (worker)
-      global_ep_reward: The moving average of the global reward
-      result_queue: Queue storing the moving average of the scores
-      total_loss: The total loss accumualted over the current episode
-      num_steps: The number of steps the episode took to complete
+        episode: Current episode
+        episode_reward: Reward accumulated over the current episode
+        worker_idx: Which thread (worker)
+        global_ep_reward: The moving average of the global reward
+        result_queue: Queue storing the moving average of the scores
+        total_loss: The total loss accumualted over the current episode
+        num_steps: The number of steps the episode took to complete
     """
-    if global_ep_reward == 0:
-        global_ep_reward = episode_reward
-    else:
-        global_ep_reward = global_ep_reward * 0.99 + episode_reward * 0.01
-
-    print("Episode: {} | Moving Average Reward: {:.3f} | Episode Reward: {:.3f} | Loss: {:.3f} | Total Steps: {}| Worker: {}".format(
-        episode, global_ep_reward, episode_reward, total_loss, global_steps, worker_idx))
-    result_queue.put(global_ep_reward)
-    return global_ep_reward
+    print("Episode: {} | Average Reward: {:.3f} | Episode Reward: {:.3f} | Loss: {:.3f} | Steps: {} | Total Steps: {} | Worker: {}".format(
+        episode, global_ep_reward, episode_reward, total_loss, ep_steps, global_steps, worker_idx))
+    result_queue.put((global_ep_reward, total_loss))
 
 
 def normalized_columns_initializer(std=1.0):
