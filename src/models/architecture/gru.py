@@ -14,7 +14,7 @@ class CnnGru(keras.Model):
 
         # CNN - spatial dependencies
         # (20, 20, 32)
-        self.conv1 = layers.Conv2D(filters=32,
+        self.conv1 = layers.Conv2D(filters=16,
                                    kernel_size=(8, 8),
                                    strides=(4, 4),
                                    activation=tf.keras.activations.relu,
@@ -24,7 +24,7 @@ class CnnGru(keras.Model):
         self.bn1 = layers.BatchNormalization()
 
         # (9, 9, 64)
-        self.conv2 = layers.Conv2D(filters=64,
+        self.conv2 = layers.Conv2D(filters=32,
                                    kernel_size=(4, 4),
                                    strides=(2, 2),
                                    activation=tf.keras.activations.relu,
@@ -33,12 +33,13 @@ class CnnGru(keras.Model):
         self.bn2 = layers.BatchNormalization()
 
         # (7, 7, 64)
-        self.conv3 = layers.Conv2D(filters=64,
+        self.conv3 = layers.Conv2D(filters=32,
                                    kernel_size=(3, 3),
                                    strides=(1, 1),
                                    activation=tf.keras.activations.relu,
                                    data_format='channels_last'
                                    )
+        self.bn3 = layers.BatchNormalization()
 
         # reshape
         self.flatten = layers.Flatten()
@@ -47,7 +48,7 @@ class CnnGru(keras.Model):
                                 )
 
         # RNN - temporal dependencies
-        self.gru = layers.GRU(256)
+        self.gru = layers.LSTM(256)
 
         # policy output layer (Actor)
         self.policy_logits = layers.Dense(units=self.action_size, activation=tf.nn.softmax, name='policy_logits')
@@ -56,14 +57,16 @@ class CnnGru(keras.Model):
         self.values = layers.Dense(units=1, name='value')
 
     @tf.function
-    def call(self, inputs):
+    def call(self, inputs, training=False):
         # converts RGB image to grayscale
-        x = tf.image.rgb_to_grayscale(inputs)
+        # x = tf.image.rgb_to_grayscale(inputs)
+        x = inputs / 255.0
         x = self.conv1(x)
-        x = self.bn1(x)
+        x = self.bn1(x, training=training)
         x = self.conv2(x)
-        x = self.bn2(x)
+        x = self.bn2(x, training=training)
         x = self.conv3(x)
+        x = self.bn3(x, training=training)
 
         x = self.flatten(x)
         x = self.fc1(x)

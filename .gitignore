@@ -2,6 +2,7 @@ UnitySDK.log
 __pycache__
 .DS_STORE
 
+.vscode/
 .ipynb_checkpoints/
 
 venv/
@@ -10,3 +11,4 @@ ObstacleTower/
 model_files/
 data/
 notes/
+logs/

@@ -63,12 +63,15 @@ The observation space provided includes a 168x168 image (the camera from the sim
 ## Usage
 ```bash
 # train an A3C agent
-python src/train.py --env <PATH_TO_OTC_GAME> --train --algorithm a3c --num_workers 2
+python src/train.py --env <PATH_TO_OTC_GAME> --algorithm a3c --num_workers 2
 
 # play an episode of the game using a given policy (random or a3c)
-python src/play.py --env <PATH_TO_OTC_GAME> --policy random
+python src/play.py --env <PATH_TO_OTC_GAME> --algorithm random
 
 # evaluate a given policy
-python play.py --env <PATH_TO_OTC_GAME> --policy random --evaluate
+python play.py --env <PATH_TO_OTC_GAME> --algorithm random --evaluate
+
+# to view graphs in tensorboard
+tensorboard --logdir logs/
 
 ```
