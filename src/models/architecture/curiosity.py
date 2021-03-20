@@ -26,15 +26,24 @@ class TowerAgent(object):
     
     def mse_loss(self, y_true, y_pred):
         loss = tf.reduce_mean(tf.square(y_true - y_pred))
+        """
+        loss = 0.0
+        # y_true = np.squeeze(y_true)
+        # y_pred = np.squeeze(y_pred)
+
+        for t, p in zip(y_true, y_pred):
+            loss += (t-p) ** 2
+        loss /= len(y_true)
+        """
         return loss
     
-    def act(self, state):
+    def act(self, state, training=False):
         """ get estimated policy and value """
-        policy, value = self.actor_critic_model(state)
+        policy, value = self.actor_critic_model(state, training=training)
 
         return policy, value
 
-    def icm_act(self, state, new_state, action_one_hot, eta=0.1):
+    def icm_act(self, state, new_state, action_one_hot, eta=0.1, training=False):
         """ calculate intrinsic reward 
         (state, new_state, action) -> intrinsic_reward
 
@@ -43,14 +52,13 @@ class TowerAgent(object):
         """
         state = tf.expand_dims(state, axis=0)
         state = tf.convert_to_tensor(state, dtype=tf.float32)
-        state_features = self.feature_extractor(state)
+        state_features = self.feature_extractor(state, training=training)
         
         new_state = tf.expand_dims(new_state, axis=0)
         new_state = tf.convert_to_tensor(new_state, dtype=tf.float32)
-        new_state_features = self.feature_extractor(new_state)
+        new_state_features = self.feature_extractor(new_state, training=training)
         
         pred_state_features = self.forward_model(state_features, action_one_hot)
-
         intrinsic_reward = (eta / 2) * self.mse_loss(pred_state_features, new_state_features)
         
         return intrinsic_reward, state_features, new_state_features
@@ -102,11 +110,10 @@ class TowerAgent(object):
         entropy = self.distribution(probs=policy).entropy()
         return entropy[0]
 
-    def policy_loss(self, policy, advantage, action_indices):
+    def policy_loss(self, policy, advantage, action_indices=[]):
         """
         A2C policy loss calculation: -1/n * sum(advantage * log(policy)).
         """
-
         policy_logs = tf.math.log(tf.clip_by_value(policy, 1e-20, 1.0))
 
         # only take policies for taken actions
@@ -115,12 +122,29 @@ class TowerAgent(object):
 
         return policy_loss
 
+    def actor_critic_loss(self, policy, advantage, entropy):
+        actor_loss, critic_loss = 0.0, 0.0
+        alpha = 0.5
+        beta = 0.001
+        n = len(advantage)
+
+        for policy, adv in zip(policy, advantage):
+            actor_loss = actor_loss + (-tf.math.log(policy) * adv)
+            critic_loss = critic_loss + (adv ** 2)
+        
+        actor_loss = actor_loss / n
+        critic_loss = critic_loss / n
+        total_loss = actor_loss + alpha * critic_loss + beta * entropy
+        return total_loss
+    
     def get_returns(self, memory):
         """
         Calculate expected value from rewards
         - At each timestep what was the total reward received after that timestep
         - Rewards in the past are discounted by multiplying them with gamma
         - These are the labels for our critic
+        """
+
         """
         gamma = 0.99
         
@@ -140,34 +164,48 @@ class TowerAgent(object):
         
         returns.reverse()
         returns = np.array(returns)
+        """
+        discounted_reward_sum = 0
+        returns = []
+        for reward in memory.rewards[::-1]:  # reverse buffer r
+            discounted_reward_sum = reward + gamma * discounted_reward_sum
+            returns.append(discounted_reward_sum)
+        returns.reverse()
+
         return returns
 
-    def get_advantage(self, memory, returns):
+    def get_advantage(self, returns, values):
         advantage = []
-        for i in range(len(returns)):
-            advantage.append(returns[i] - memory.values[i])
+        for ret, val in zip(returns, values):
+            advantage.append(ret - val)
         
-        advantage = np.array(advantage)
-        advantage = (advantage - np.mean(advantage)) / (np.std(advantage) + 1e-6)
+        # advantage = np.array(advantage)
+        # advantage = (advantage - np.mean(advantage)) / (np.std(advantage) + 1e-6)
         return advantage
 
-    def compute_loss(self, memory, episode_reward):
+    def compute_loss(self, memory, episode_reward, entropy):
         returns  = self.get_returns(memory)
-        advantage = self.get_advantage(memory, returns)
+        advantage = self.get_advantage(returns, memory.values)
 
-        policy_acts, new_value = self.act(np.stack(memory.frames))
+        # policy_acts, new_value = self.act(np.stack(memory.frames))
         predicted_states = self.forward_act(
-            tf.concat(memory.state_features, axis=0), tf.concat(memory.action_indices, axis=0)
-        )
+            tf.concat(memory.state_features, axis=0), 
+            tf.concat(memory.action_indices, axis=0), 
+            training=True)
         predicted_acts = self.inverse_act(
-            tf.concat(memory.state_features, axis=0), tf.concat(memory.new_state_features, axis=0)
-        )
+            tf.concat(memory.state_features, axis=0), 
+            tf.concat(memory.new_state_features, axis=0), 
+            training=True)
         
+        """
         policy_loss = self.policy_loss(policy_acts, advantage, memory.action_indices)
         value_loss = self.value_loss(returns, new_value)
         entropy = self.entropy(policy_acts)
-
         loss = policy_loss + self.value_coeff * value_loss - self.ent_coeff * entropy
+        """
+
+        loss = self.actor_critic_loss(memory.policy, advantage, entropy)
+
         forward_loss = self.forward_loss(memory.new_state_features, predicted_states)
         inverse_loss = self.inverse_loss(predicted_acts, tf.concat(memory.action_indices, axis=0))
 
@@ -177,7 +215,7 @@ class TowerAgent(object):
             + self.beta * forward_loss
         )
 
-        print("Loss Values:\nPolicy Loss = {}\nValue Loss = {}\nEntropy = {}\nForward Loss = {}\nInverse Loss = {}\nAgent Loss = {}\n".format(
-            policy_loss, value_loss, entropy, forward_loss, inverse_loss, agent_loss))
+        print("Loss Values:\nAC Loss = {}\nEntropy = {}\nForward Loss = {}\nInverse Loss = {}\nAgent Loss = {}\n".format(
+            loss, entropy, forward_loss, inverse_loss, agent_loss))
 
         return agent_loss, forward_loss, inverse_loss

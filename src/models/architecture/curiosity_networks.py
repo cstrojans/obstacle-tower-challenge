@@ -40,14 +40,14 @@ class ConvGruNet(Layer):
 
         # reshape
         self.flatten = layers.Flatten()
-        self.fc1 = layers.Dense(units=512,
+        self.fc1 = layers.Dense(units=256,
                                 activation=layers.LeakyReLU(alpha=0.01)
                                 )
         
         # LSTM component
         # models the sequence on agents' movements
         # an alternate to frame stacking
-        self.gru = layers.GRU(512, return_state=True)
+        self.gru = layers.GRU(256, return_state=True)
 
         # Actor - policy output layer
         # chooses the best action to perform in each timestep
@@ -58,6 +58,8 @@ class ConvGruNet(Layer):
         self.values = layers.Dense(units=1, name='value')
     
     def call(self, state, training=False):
+        state = state / 255.0
+
         # feature maps using convolutional layers
         features = self.conv1(state)
         features = self.bn1(features, training=training)
@@ -68,7 +70,7 @@ class ConvGruNet(Layer):
         features = self.flatten(features)
         features = self.fc1(features)
 
-        # input: [batch, timesteps, feature]
+        # recurrent input: [batch, timesteps, feature]
         features = tf.expand_dims(features, axis=0)
         features, hidden_state = self.gru(features)
 
@@ -114,7 +116,8 @@ class FeatureExtractor(Layer):
         self.fc1 = layers.Dense(units=288, activation=layers.LeakyReLU(alpha=0.01))
     
     def call(self, state, training=False):
-        # TODO: observation normalization before passing to conv1 layer
+        state = state / 255.0
+
         pred_state_f = self.conv1(state)
         pred_state_f = self.bn1(pred_state_f, training=training)
         pred_state_f = self.conv2(pred_state_f)

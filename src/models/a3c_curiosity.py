@@ -22,7 +22,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 
 class CuriosityMasterAgent():
-    """MasterAgent A3C: Asynchronous Advantage Actor Critic Model is a model-free policy gradient algorithm.
+    """MasterAgent A3C: Curiosity Model
     """
 
     def __init__(self, env_path, train, evaluate, lr, max_eps, update_freq, gamma, num_workers, save_dir, eval_seeds=[]):
@@ -70,15 +70,15 @@ class CuriosityMasterAgent():
         vec = np.random.random(self.input_shape)
         vec = np.expand_dims(vec, axis=0)
         vec = tf.convert_to_tensor(vec, dtype=tf.float32)
-        self.global_agent.act(vec)
+        self.global_agent.act(vec, training=True)
 
     def build_graph(self):
         """ build the model architecture """
         x = keras.Input(shape=self.input_shape)
         # TODO: replace call() with something else to get output tensor representation
-        model = keras.Model(inputs=[x], outputs=self.global_agent.act(x))
+        model = keras.Model(inputs=[x], outputs=self.global_agent.act(x, training=True))
         keras.utils.plot_model(model, to_file=os.path.join(
-            self.save_dir, 'model_a3c_architecture.png'), dpi=96, show_shapes=True, show_layer_names=True, expand_nested=False)
+            self.save_dir, 'model_curiosity_architecture.png'), dpi=96, show_shapes=True, show_layer_names=True, expand_nested=False)
         return model
 
     def train(self):
@@ -103,12 +103,19 @@ class CuriosityMasterAgent():
 
         # record episode reward to plot
         moving_average_rewards = []
+        losses = []
         while True:
-            reward = res_queue.get()
-            if reward is not None:
-                moving_average_rewards.append(reward)
+            result = res_queue.get()
+            if result:
+                reward, loss = result
             else:
                 break
+            if reward is None or not loss:
+                break
+            else:
+                moving_average_rewards.append(reward)
+                losses.append(loss)
+        
         for w in workers:
             w.join()
 
@@ -116,11 +123,25 @@ class CuriosityMasterAgent():
         print("\nTraining complete. Time taken = {} secs".format(
             end_time - start_time))
 
+        """
         plt.plot(moving_average_rewards)
         plt.ylabel('Moving average episode reward')
         plt.xlabel('Step')
-        plt.savefig(os.path.join(self.save_dir,
-                                 'model_a3c_moving_average.png'))
+        plt.savefig(os.path.join(self.save_dir, 'model_curiosity_moving_average.png'))
+        """
+        fig, (ax1, ax2) = plt.subplots(nrows=2, ncols=1)
+        fig.suptitle('A3C Model')
+
+        ax1.plot(range(1, len(moving_average_rewards) + 1), moving_average_rewards)
+        ax1.set_title('Reward vs Timesteps')
+        ax1.set(xlabel='Episodes', ylabel='Reward')
+
+        ax2.plot(range(1, len(losses) + 1), losses)
+        ax2.set_title('Loss vs Timesteps')
+        ax2.set(xlabel='Episodes', ylabel='Loss')
+        
+        fig.tight_layout()
+        fig.savefig(os.path.join(self.save_dir, 'model_curiosity_moving_average.png'))
 
         # save the trained model to a file
         # print('Saving global model to: {}'.format(self.model_path))
@@ -140,11 +161,12 @@ class CuriosityMasterAgent():
         try:
             obs = self.env.reset()
             state, _, _, _ = obs
-            policy, _ = model.act(tf.convert_to_tensor(np.expand_dims(state, axis=0), dtype=tf.float32))
-            action_index = np.argmax(policy)
-            action = self._action_lookup[action_index]
             
-            while True:
+            while not done:
+                policy, _ = model.act(tf.convert_to_tensor(np.expand_dims(state, axis=0), dtype=tf.float32), training=True)
+                action_index = np.random.choice(self.action_size, p=np.squeeze(policy))
+                action = self._action_lookup[action_index]
+                
                 for i in range(4):  # frame skipping
                     obs, reward, done, _ = self.env.step(action)
                     state, _, _, _ = obs
@@ -154,11 +176,8 @@ class CuriosityMasterAgent():
                 if done:
                     break
                 
-                print("{}. Reward: {}, action: {}".format(step_counter, reward_sum, action_space.get_action_meaning(action)))
-
-                policy, _ = model.act(tf.convert_to_tensor(np.expand_dims(state, axis=0), dtype=tf.float32))
-                action_index = np.argmax(policy)
-                action = self._action_lookup[action_index]
+                print("{}. Reward: {}, action: {}".format(step_counter,
+                                                          reward_sum, action_space.get_action_meaning(action)))
         except KeyboardInterrupt:
             print("Received Keyboard Interrupt. Shutting down.")
         finally:
@@ -209,7 +228,7 @@ class Worker(threading.Thread):
         # self.batch_size = 128
         self.timesteps = 1024
         self.batch_size = 128
-        self.model_path = os.path.join(self.save_dir, 'model_a3c')
+        self.model_path = os.path.join(self.save_dir, 'model_curiosity')
 
     def get_updated_reward(self, reward, new_health, new_keys, done):
         new_health = float(new_health)
@@ -220,11 +239,12 @@ class Worker(threading.Thread):
         else:
             if reward >= 1:  # prioritize crossing a floor/level - between [1, 4]
                 reward += (new_health / 10000)
-            elif new_health > self._last_health:  # found time orb
-                reward = 0.1
+            
+            if new_health > self._last_health:  # found time orb
+                reward += 1
 
             if new_keys > self._last_keys:  # found a key
-                reward = 1
+                reward += 1
 
         return reward
 
@@ -254,12 +274,16 @@ class Worker(threading.Thread):
     
     def run(self):
         mem = CuriosityMemory()
+        rewards = []
+        entropy_term = 0
         num_updates = self.timesteps // self.batch_size
 
         for timestamp in range(num_updates):
             reset = True
             episode_reward = 0.0
-
+            episode_steps = 0
+            agent_loss, forward_loss, inverse_loss = 0.0, 0.0, 0.0
+            
             # collect experience
             with tf.GradientTape(persistent=True) as tape:
                 for episode_step in range(self.batch_size):
@@ -268,9 +292,11 @@ class Worker(threading.Thread):
                         state, _, _, _ = obs
                         reset = False
                     
-                    exp_state = tf.expand_dims(state, axis=0)
-                    exp_state = tf.convert_to_tensor(exp_state, dtype=tf.float32)
-                    policy, value = self.local_agent.act(exp_state)
+                    exp_state = tf.convert_to_tensor(state, dtype=tf.float32)
+                    exp_state = tf.expand_dims(exp_state, axis=0)
+                    policy, value = self.local_agent.act(exp_state, training=True)
+                    entropy = -np.sum(policy * np.log(policy))
+                    entropy_term += entropy
                     
                     action_index = np.random.choice(self.action_size, p=np.squeeze(policy))
                     action_one_hot = np.zeros(self.action_size)
@@ -281,41 +307,41 @@ class Worker(threading.Thread):
                     # TODO: implement frame skipping
                     obs, reward, done, _ = self.env.step(action)
                     new_state, new_keys, new_health, cur_floor = obs
-                    
-                    if done:
-                        break
                         
-                    intrinsic_reward, state_features, new_state_features = self.local_agent.icm_act(state, new_state, action_one_hot)
+                    intrinsic_reward, state_features, new_state_features = self.local_agent.icm_act(state, new_state, action_one_hot, training=True)
                     total_reward = reward + intrinsic_reward
                     episode_reward += total_reward
-                    Worker.running_reward = 0.05 * episode_reward + (1 - 0.05) * Worker.running_reward
                     Worker.global_steps += 1
 
                     mem.store(new_state,
                               total_reward,
                               done,
-                              value,
+                              value[0, 0],
                               action_one_hot,
-                              policy,
+                              policy[0, action_index],
                               state_features, # (1, 288)
                               new_state_features)
-    
-            # calculate loss
-            agent_loss, forward_loss, inverse_loss = self.local_agent.compute_loss(mem, episode_reward)
-            self.update(tape, agent_loss, forward_loss, inverse_loss)
+                    episode_steps += 1
 
-            tape.reset()
-            
+                    if done:
+                        # calculate loss
+                        agent_loss, forward_loss, inverse_loss = self.local_agent.compute_loss(mem, episode_reward, entropy_term)
+                        self.update(tape, agent_loss, forward_loss, inverse_loss)
+                        break
+
             # clear the experience
             mem.clear()
+            # tape.reset()
+            rewards.append(episode_reward)
 
-            Worker.running_reward = record(timestamp,
-                                        episode_reward,
-                                        self.worker_idx,
-                                        Worker.running_reward,
-                                        self.result_queue,
-                                        agent_loss,
-                                        Worker.global_steps)
+            record(timestamp,
+                   episode_reward,
+                   self.worker_idx,
+                   Worker.running_reward,
+                   self.result_queue,
+                   agent_loss,
+                   episode_steps,
+                   Worker.global_steps)
 
             # use a lock to save local model and to print to prevent data races.
             if episode_reward > Worker.best_score:
