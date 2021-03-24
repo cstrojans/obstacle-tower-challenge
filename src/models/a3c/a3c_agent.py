@@ -14,11 +14,10 @@ from tensorflow import keras
 import threading
 import time
 
-from models.architecture.cnn import CNN
-from models.architecture.gru import CnnGru
-from models.util import ActionSpace, Memory
-from models.util import record
-from definitions import *
+from models.a3c.cnn import CNN
+from models.a3c.gru import CnnGru
+from models.common.util import ActionSpace, Memory, record
+from models.common.constants import *
 
 matplotlib.use('agg')
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
@@ -267,10 +266,10 @@ class Worker(threading.Thread):
     def run(self):
         mem = Memory()
         rewards = []
-        entropy_term = 0
         ep_count = 0
 
         while Worker.episode_count < self.max_eps:
+            entropy_term = 0
             ep_reward = 0.
             ep_steps = 0
             ep_loss = 0.

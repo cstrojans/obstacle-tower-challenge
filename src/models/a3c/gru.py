@@ -3,7 +3,6 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 from tensorflow.python import keras
 from tensorflow.python.keras import layers
-from models.util import normalized_columns_initializer
 
 
 class CnnGru(keras.Model):

@@ -2,7 +2,7 @@ import argparse
 from obstacle_tower_env import ObstacleTowerEnv
 import time
 
-from definitions import *
+from models.common.constants import *
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -28,18 +28,18 @@ if __name__ == '__main__':
 
     start_time = time.time()
     if args.algorithm == 'random':
-        from models.random_agent import RandomAgent
+        from models.random.random_agent import RandomAgent
         random_agent = RandomAgent(env_path=args.env, train=True,
                                    evaluate=False, max_eps=args.max_eps, save_dir=args.save_dir)
         random_agent.train()
     elif args.algorithm == 'a3c':
-        from models.a3c import MasterAgent
+        from models.a3c.a3c_agent import MasterAgent
         master = MasterAgent(env_path=args.env, train=True, evaluate=False, lr=args.lr, max_eps=args.max_eps,
                              update_freq=args.update_freq, gamma=args.gamma, num_workers=args.num_workers, save_dir=args.save_dir)
         # master.build_graph().summary()
         master.train()
     elif args.algorithm == 'curiosity':
-        from models.a3c_curiosity import CuriosityMasterAgent
+        from models.curiiosity.curiosity_agent import CuriosityMasterAgent
         master = CuriosityMasterAgent(env_path=args.env, train=True, evaluate=False, lr=args.lr, max_eps=args.max_eps,
                              update_freq=args.update_freq, gamma=args.gamma, num_workers=args.num_workers, save_dir=args.save_dir)
         # master.build_graph().summary()

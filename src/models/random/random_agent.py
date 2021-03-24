@@ -2,14 +2,13 @@ from queue import Queue
 import gym
 import matplotlib
 import matplotlib.pyplot as plt
-from models.util import record
 from obstacle_tower_env import ObstacleTowerEnv, ObstacleTowerEvaluation
 import os
 from prettyprinter import pprint
 import time
 
-from definitions import *
-from models.util import *
+from models.common.constants import *
+from models.common.util import *
 
 
 matplotlib.use('agg')
@@ -45,6 +44,7 @@ class RandomAgent:
     def train(self):
         start_time = time.time()
         reward_avg = 0
+        global_steps = 0
         moving_average_rewards = []
         for episode in range(self.max_episodes):
             done = False
@@ -56,13 +56,14 @@ class RandomAgent:
                 _, reward, done, _ = self.env.step(
                     self.env.action_space.sample())
                 steps += 1
+                global_steps += 1
                 reward_sum += reward
 
             # Record statistics
             moving_average_rewards.append(reward_sum)
             reward_avg += reward_sum
             self.global_moving_average_reward = record(
-                episode, reward_sum, 0, self.global_moving_average_reward, self.res_queue, 0, steps)
+                episode, reward_sum, 0, self.global_moving_average_reward, self.res_queue, 0, steps, global_steps)
         end_time = time.time()
         print("\nTraining complete. Time taken = {} secs".format(end_time - start_time))
         final_avg = reward_avg / float(self.max_episodes)

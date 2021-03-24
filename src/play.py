@@ -19,11 +19,11 @@ if __name__ == '__main__':
 
     eval_seeds = [1001, 1002, 1003, 1004, 1005]
     if args.algorithm == 'random':
-        from models.random_agent import RandomAgent
+        from models.random.random_agent import RandomAgent
         model = RandomAgent(env_path=args.env, train=False,
                             evaluate=args.evaluate, eval_seeds=eval_seeds, save_dir=args.save_dir)
     elif args.algorithm == 'a3c':
-        from models.a3c import MasterAgent
+        from models.a3c.a3c_agent import MasterAgent
         model = MasterAgent(env_path=args.env, train=False, evaluate=args.evaluate, eval_seeds=eval_seeds, lr=0.0,
                             max_eps=0, update_freq=0, gamma=0, num_workers=1, save_dir=args.save_dir)
 
