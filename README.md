@@ -60,18 +60,62 @@ The environment provided has a MultiDiscrete action space (list of valid actions
 
 The observation space provided includes a 168x168 image (the camera from the simulation) as well as the number of keys held by the agent (0-5) and the amount of time remaining.
 
-## Usage
-```bash
-# train an A3C agent
-python src/train.py --env <PATH_TO_OTC_GAME> --algorithm a3c --num_workers 2
+## Models and their usage
+1. Random Agent
+```
+usage: train.py random [-h] [--max-eps MAX_EPS] [--save-dir SAVE_DIR]
 
+optional arguments:
+  -h, --help           show this help message and exit
+  --max-eps MAX_EPS    Maximum number of episodes (games) to run.
+  --save-dir SAVE_DIR  Directory in which you desire to save the model.
+```
+
+2. A3C Agent
+```
+usage: train.py a3c [-h] [--lr LR] [--max-eps MAX_EPS] [--update-freq UPDATE_FREQ] [--gamma GAMMA] [--num-workers NUM_WORKERS] [--save-dir SAVE_DIR]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --lr LR               Learning rate for the shared optimizer.
+  --max-eps MAX_EPS     Maximum number of episodes (games) to run.
+  --update-freq UPDATE_FREQ
+                        How often to update the global model.
+  --gamma GAMMA         Discount factor of rewards.
+  --num-workers NUM_WORKERS
+                        Number of workers for asynchronous learning.
+  --save-dir SAVE_DIR   Directory in which you desire to save the model.
+```
+3. Curiosity Agent
+```
+usage: train.py curiosity [-h] [--lr LR] [--timesteps TIMESTEPS] [--batch-size BATCH_SIZE] [--gamma GAMMA] [--save-dir SAVE_DIR]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --lr LR               Learning rate for the shared optimizer.
+  --timesteps TIMESTEPS
+                        Maximum number of episodes (games) to run.
+  --batch-size BATCH_SIZE
+                        How often to update the global model.
+  --gamma GAMMA         Discount factor of rewards.
+  --save-dir SAVE_DIR   Directory in which you desire to save the model.
+```
+### Commands
+To train the agent:
+```bash
+python src/train.py --env <PATH_TO_OTC_GAME> <AGENT_NAME> [<ARGS>]
+```
+View training logs on Tensorboard:
+```
+# to view graphs in tensorboard
+tensorboard --logdir logs/
+```
+
+To play a game with a trained agent:
+```
 # play an episode of the game using a given policy (random or a3c)
 python src/play.py --env <PATH_TO_OTC_GAME> --algorithm random
 
-# evaluate a given policy
+# evaluate a given agent
 python play.py --env <PATH_TO_OTC_GAME> --algorithm random --evaluate
-
-# to view graphs in tensorboard
-tensorboard --logdir logs/
-
 ```

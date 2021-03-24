@@ -1,8 +1,8 @@
 import itertools
 import numpy as np
 import tensorflow as tf
-
-
+from obstacle_tower_env import ObstacleTowerEnv, ObstacleTowerEvaluation
+from models.common.constants import train_env_reset_config, eval_env_reset_config
 class Memory:
     def __init__(self):
         self.action_probs_history = []
@@ -131,3 +131,19 @@ def normalized_columns_initializer(std=1.0):
         out *= std / np.sqrt(np.square(out).sum(axis=0, keepdims=True))
         return tf.constant(out)
     return _initializer
+
+def instantiate_environment(path, train, evaluate, eval_seeds=[]):
+    env = None
+    if train:
+        env = ObstacleTowerEnv(
+            path, worker_id=0, retro=False, realtime_mode=False, greyscale=False, config=train_env_reset_config)
+    else:
+        if evaluate:
+            env = ObstacleTowerEnv(
+                path, worker_id=0, retro=False, realtime_mode=False, greyscale=False, config=eval_env_reset_config)
+            env = ObstacleTowerEvaluation(env, eval_seeds)
+        else:
+            env = ObstacleTowerEnv(
+                path, worker_id=0, retro=False, realtime_mode=True, greyscale=False, config=eval_env_reset_config)
+    
+    return env
