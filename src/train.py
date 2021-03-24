@@ -50,8 +50,8 @@ if __name__ == '__main__':
         agent.train()
     elif args.subparser_name == 'curiosity':
         from models.curiosity.curiosity_agent import CuriosityAgent
-        agent = CuriosityAgent(env_path=args.env, train=True, evaluate=False, lr=args.lr, max_eps=args.max_eps,
-                             update_freq=args.update_freq, gamma=args.gamma, num_workers=args.num_workers, save_dir=args.save_dir)
+        agent = CuriosityAgent(env_path=args.env, train=True, evaluate=False, lr=args.lr, timesteps=args.timesteps,
+                             batch_size=args.batch_size, gamma=args.gamma, save_dir=args.save_dir)
         # master.build_graph().summary()
         agent.train()
     else:
