@@ -29,7 +29,7 @@ if __name__ == '__main__':
     parser_c = subparsers.add_parser('curiosity', help='command line arguments for the Curiosity agent')
     parser_c.add_argument('--lr', default=1e-4, type=float, help='Learning rate for the shared optimizer.')
     parser_c.add_argument('--timesteps', default=10240, type=int, help='Maximum number of episodes (games) to run.')
-    parser_c.add_argument('--batch-size', default=1024, type=int, help='How often to update the global model.')
+    parser_c.add_argument('--batch-size', default=512, type=int, help='How often to update the global model.')
     parser_c.add_argument('--gamma', default=0.99, type=float, help='Discount factor of rewards.')
     parser_c.add_argument('--save-dir', default='./model_files/', type=str, help='Directory in which you desire to save the model.')
 

@@ -132,7 +132,7 @@ def normalized_columns_initializer(std=1.0):
         return tf.constant(out)
     return _initializer
 
-def instantiate_environment(path, train, evaluate, eval_seeds=[]):
+def instantiate_environment(path, train, evaluate, eval_seeds=[1001]):
     env = None
     if train:
         env = ObstacleTowerEnv(
@@ -142,7 +142,7 @@ def instantiate_environment(path, train, evaluate, eval_seeds=[]):
             env = ObstacleTowerEnv(
                 path, worker_id=0, retro=False, realtime_mode=False, greyscale=False, config=eval_env_reset_config)
             env = ObstacleTowerEvaluation(env, eval_seeds)
-        else:
+        else:  # play a single game
             env = ObstacleTowerEnv(
                 path, worker_id=0, retro=False, realtime_mode=True, greyscale=False, config=eval_env_reset_config)
     

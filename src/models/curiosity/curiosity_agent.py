@@ -1,24 +1,18 @@
 import datetime
 import gym
-import matplotlib
-import matplotlib.pyplot as plt
 import multiprocessing
 import numpy as np
 from obstacle_tower_env import ObstacleTowerEnv, ObstacleTowerEvaluation
 import os
 from prettyprinter import pprint
-from queue import Queue
 import tensorboard
 import tensorflow as tf
-from tensorflow import keras
-import threading
 import time
 
 from models.curiosity.agent import TowerAgent
 from models.common.util import ActionSpace, CuriosityMemory
 from models.common.util import record, instantiate_environment
 
-matplotlib.use('agg')
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 
@@ -47,13 +41,15 @@ class CuriosityAgent():
         self.model_path = os.path.join(self.save_dir, 'model_curiosity')
         self.lr = lr
         self.gamma = gamma
-        self.lr_schedule = keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=self.lr, decay_steps=1000, decay_rate=0.9)
-        self.opt = keras.optimizers.Adam(learning_rate=self.lr_schedule, epsilon=1e-05)
+        self.lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=self.lr, decay_steps=1000, decay_rate=0.9)
+        self.opt = tf.keras.optimizers.Adam(learning_rate=self.lr_schedule, epsilon=1e-05)
         self.eps = np.finfo(np.float32).eps.item()  # smallest number such that 1.0 + eps != 1.0
         self._last_health = 99999.
         self._last_keys = 0
         self.timesteps = timesteps
         self.batch_size = batch_size
+        self.ext_coeff = 1
+        self.int_coeff = 1
 
         # logging
         self.current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -79,18 +75,18 @@ class CuriosityAgent():
             self.summary_writer.flush()
     
     def load_model(self):
-        print('\nLoading model from: {}\n'.format(self.model_path))
-        self.agent.actor_critic_model = keras.models.load_model(os.path.join(self.model_path, 'ac_model'), compile=True)
-        self.agent.feature_extractor = keras.models.load_model(os.path.join(self.model_path, 'fe_model'), compile=True)
-        self.agent.forward_model = keras.models.load_model(os.path.join(self.model_path, 'fm_model'), compile=True)
-        self.agent.inverse_model = keras.models.load_model(os.path.join(self.model_path, 'im_model'), compile=True)
+        print('Loading model from: {}'.format(self.model_path))
+        self.agent.actor_critic_model = tf.keras.models.load_model(os.path.join(self.model_path, 'ac_model'), compile=False)
+        self.agent.feature_extractor = tf.keras.models.load_model(os.path.join(self.model_path, 'fe_model'), compile=False)
+        self.agent.forward_model = tf.keras.models.load_model(os.path.join(self.model_path, 'fm_model'), compile=False)
+        self.agent.inverse_model = tf.keras.models.load_model(os.path.join(self.model_path, 'im_model'), compile=False)
     
     def save_model(self):
-        print('\nSaving model to: {}\n'.format(self.model_path))
-        keras.models.save_model(self.agent.actor_critic_model, os.path.join(self.model_path, 'ac_model'))
-        keras.models.save_model(self.agent.feature_extractor, os.path.join(self.model_path, 'fe_model'))
-        keras.models.save_model(self.agent.forward_model, os.path.join(self.model_path, 'fm_model'))
-        keras.models.save_model(self.agent.inverse_model, os.path.join(self.model_path, 'im_model'))
+        print('Saving model to: {}'.format(self.model_path))
+        tf.keras.models.save_model(self.agent.actor_critic_model, os.path.join(self.model_path, 'ac_model'))
+        tf.keras.models.save_model(self.agent.feature_extractor, os.path.join(self.model_path, 'fe_model'))
+        tf.keras.models.save_model(self.agent.forward_model, os.path.join(self.model_path, 'fm_model'))
+        tf.keras.models.save_model(self.agent.inverse_model, os.path.join(self.model_path, 'im_model'))
 
     def update(self, tape, ac_loss, agent_loss, forward_loss, inverse_loss):
         """ calculate and apply gradients """
@@ -154,7 +150,7 @@ class CuriosityAgent():
                     new_state, new_keys, new_health, cur_floor = obs
                     
                     intrinsic_reward, state_features, new_state_features = self.agent.icm_act(state, new_state, action_one_hot, training=True)
-                    total_reward = reward + intrinsic_reward
+                    total_reward = self.ext_coeff * reward + self.int_coeff * intrinsic_reward
                     episode_reward += total_reward
                     episode_steps += 1
                     global_steps += 1
@@ -171,12 +167,10 @@ class CuriosityAgent():
 
                     if done:  # game has terminated
                         break
-                
                 ac_loss, agent_loss, forward_loss, inverse_loss = self.agent.compute_loss(mem, episode_reward, entropy_term)
-                self.update(tape, ac_loss, agent_loss, forward_loss, inverse_loss)
-
-            # clear the experience
-            mem.clear()
+            
+            self.update(tape, ac_loss, agent_loss, forward_loss, inverse_loss)
+            mem.clear()  # clear the experience
 
             if done:
                 rewards.append(episode_reward)
@@ -186,7 +180,7 @@ class CuriosityAgent():
                     num_games, running_reward, episode_reward, ac_loss, forward_loss, inverse_loss, episode_steps, global_steps))
 
                 if episode_reward > best_score:
-                    print("\nFound better score: old = {}, new = {}\n".format(best_score, episode_reward))
+                    print("Found better score: old = {}, new = {}".format(best_score, episode_reward))
                     best_score = episode_reward
                     self.save_model()
 
@@ -197,12 +191,11 @@ class CuriosityAgent():
     def play_single_episode(self):
         """ have the trained agent play a single game """
         action_space = ActionSpace()
-        model = self.load_model()
+        self.load_model()
         print("Playing single episode...")
         done = False
         step_counter = 0
         reward_sum = 0
-        
         obs = self.env.reset()
         state, _, _, _ = obs
 
@@ -210,7 +203,7 @@ class CuriosityAgent():
             while not done:
                 state = tf.convert_to_tensor(state)
                 state = tf.expand_dims(state, axis=0)
-                policy, _ = model.act(state, training=False)
+                policy, _ = self.agent.act(state)
                 action_index = np.random.choice(self.action_size, p=np.squeeze(policy))
                 action = self._action_lookup[action_index]
                 
@@ -220,17 +213,18 @@ class CuriosityAgent():
                     reward_sum += reward
                     step_counter += 1
                 
-                if not self.evaluate:
-                    print("{}. Reward: {}, action: {}".format(
-                        step_counter, reward_sum, action_space.get_action_meaning(action)))
+                print("{}. Reward: {}, action: {}".format(step_counter,
+                      reward_sum, action_space.get_action_meaning(action)))
         except KeyboardInterrupt:
             print("Received Keyboard Interrupt. Shutting down.")
+        except Exception as e:
+            print(str(e))
         finally:
             if not self.evaluate:
                 self.env.close()
-                print("Environment closed.")
-            print("Game play completed.")
-            return reward_sum
+
+        print("Game play completed.")
+        return reward_sum
 
     def evaluate(self):
         """ run episodes until evaluation is complete """

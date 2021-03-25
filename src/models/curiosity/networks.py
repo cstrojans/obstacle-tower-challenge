@@ -1,10 +1,10 @@
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras import Model, layers, activations, losses
+from tensorflow.keras import Model, layers
 from tensorflow.keras.layers import Layer
 
 
-class ConvGruNet(Layer):
+class ConvGruNet(Model):
     """ Actor Critic Model """
 
     def __init__(self, action_size, ip_shape=(84, 84, 3), **kwargs):
@@ -91,7 +91,7 @@ class ConvGruNet(Layer):
         return policy, value
 
 
-class FeatureExtractor(Layer):
+class FeatureExtractor(Model):
     """ learns a feature representation of the state """
 
     def __init__(self, ip_shape, **kwargs):
@@ -149,7 +149,7 @@ class FeatureExtractor(Layer):
         return pred_state_f
 
 
-class ForwardModel(Layer):
+class ForwardModel(Model):
     def __init__(self, **kwargs):
         super(ForwardModel, self).__init__(**kwargs)
         self.fc1 = layers.Dense(units=256,
@@ -166,7 +166,8 @@ class ForwardModel(Layer):
                                      )
 
     # @tf.function
-    def call(self, action_one_hot, state_features):
+    def call(self, inputs):
+        action_one_hot, state_features = inputs
         concat_features = tf.concat([state_features, action_one_hot], axis=1)
         pred_next_state_f = self.fc1(concat_features)
         pred_next_state_f = self.hidden_1(pred_next_state_f)
@@ -174,7 +175,7 @@ class ForwardModel(Layer):
         return pred_next_state_f
 
 
-class InverseModel(Layer):
+class InverseModel(Model):
     def __init__(self, action_size, **kwargs):
         super(InverseModel, self).__init__(**kwargs)
         self.fc1 = layers.Dense(units=256,
@@ -192,7 +193,8 @@ class InverseModel(Layer):
         self.op = layers.Dense(units=action_size, activation=tf.nn.softmax)
 
     # @tf.function
-    def call(self, state_features, next_state_features):
+    def call(self, inputs):
+        state_features, next_state_features = inputs
         concat_features = tf.concat(
             [state_features, next_state_features], axis=1)
         pred_action_index = self.fc1(concat_features)

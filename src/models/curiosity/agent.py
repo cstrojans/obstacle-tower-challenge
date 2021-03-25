@@ -1,6 +1,5 @@
 import numpy as np
 import tensorflow as tf
-import tensorflow_probability as tfp
 from tensorflow.keras import Model, layers, activations, losses
 from tensorflow.keras.layers import Layer
 from models.curiosity.networks import ConvGruNet, FeatureExtractor, ForwardModel, InverseModel
@@ -17,7 +16,6 @@ class TowerAgent(object):
         self.feature_extractor = FeatureExtractor(self.ip_shape)
         self.forward_model = ForwardModel()
         self.inverse_model = InverseModel(self.action_size)
-        self.distribution = tfp.distributions.Categorical
         
         self.ent_coeff = 0.001
         self.eta = 0.1
@@ -50,7 +48,7 @@ class TowerAgent(object):
         new_state_features = self.feature_extractor(new_state, training=training)
         
         action_one_hot = tf.cast(action_one_hot, tf.float32)
-        pred_state_features = self.forward_model(state_features, action_one_hot)
+        pred_state_features = self.forward_model((state_features, action_one_hot))
         intrinsic_reward = (self.eta / 2) * self.mse_loss(pred_state_features, new_state_features)
         
         return intrinsic_reward, state_features, new_state_features
@@ -58,12 +56,12 @@ class TowerAgent(object):
     def forward_act(self, batch_state_features, batch_action_indices):
         batch_state_features = tf.cast(batch_state_features, tf.float32)
         batch_action_indices = tf.cast(batch_action_indices, tf.float32)
-        return self.forward_model(batch_state_features, batch_action_indices)
+        return self.forward_model((batch_state_features, batch_action_indices))
 
     def inverse_act(self, batch_state_features, batch_new_state_features):
         batch_state_features = tf.cast(batch_state_features, tf.float32)
         batch_new_state_features = tf.cast(batch_new_state_features, tf.float32)
-        return self.inverse_model(batch_state_features, batch_new_state_features)
+        return self.inverse_model((batch_state_features, batch_new_state_features))
 
     def forward_loss(self, new_state_features, new_state_pred):
         """
@@ -126,20 +124,12 @@ class TowerAgent(object):
         predicted_acts = self.inverse_act(
             tf.concat(memory.state_features, axis=0), 
             tf.concat(memory.new_state_features, axis=0))
-        
-        """
-        policy_loss = self.policy_loss(policy_acts, advantage, memory.action_indices)
-        value_loss = self.value_loss(returns, new_value)
-        entropy = self.entropy(policy_acts)
-        loss = policy_loss + self.value_coeff * value_loss - self.ent_coeff * entropy
-        """
 
         ac_loss = self.actor_critic_loss(memory.policy, memory.values, returns, entropy)
         forward_loss = self.forward_loss(memory.new_state_features, predicted_states)
         inverse_loss = self.inverse_loss(predicted_acts, memory.action_indices)
 
         agent_loss = self.isc_lambda * ac_loss + (1 - self.beta) * inverse_loss + self.beta * forward_loss
-
         # print("Loss Values:\nAC Loss = {}\nEntropy = {}\nForward Loss = {}\nInverse Loss = {}\nAgent Loss = {}\n".format(
         #     ac_loss, entropy, forward_loss, inverse_loss, agent_loss))
         return ac_loss, agent_loss, forward_loss, inverse_loss

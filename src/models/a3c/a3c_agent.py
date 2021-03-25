@@ -185,6 +185,8 @@ class MasterAgent():
         finally:
             if not self.evaluate:
                 self.env.close()
+                print("Environment closed.")
+            print("Game play completed.")
             return reward_sum
 
     def evaluate(self):
