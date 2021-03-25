@@ -68,11 +68,14 @@ class CuriosityAgent():
     #         self.save_dir, 'model_curiosity_architecture.png'), dpi=96, show_shapes=True, show_layer_names=True, expand_nested=False)
     #     return model
 
-    def log_metrics(self, ep_reward, avg_reward, loss, step):
+    def log_metrics(self, episode_reward, running_reward, ac_loss, forward_loss, inverse_loss, agent_loss, episode):
         with self.summary_writer.as_default():
-            tf.summary.scalar('episode_reward', ep_reward, step=step)
-            tf.summary.scalar('moving_average_reward', avg_reward, step=step)
-            tf.summary.scalar('loss', loss, step=step)
+            tf.summary.scalar('episode_reward', episode_reward, step=episode)
+            tf.summary.scalar('moving_average_reward', running_reward, step=episode)
+            tf.summary.scalar('actor_critic_loss', ac_loss, step=episode)
+            tf.summary.scalar('forward_model_loss', forward_loss, step=episode)
+            tf.summary.scalar('inverse_model_loss', inverse_loss, step=episode)
+            tf.summary.scalar('agent_loss', agent_loss, step=episode)
             self.summary_writer.flush()
     
     def load_model(self):
@@ -90,7 +93,7 @@ class CuriosityAgent():
         keras.models.save_model(self.agent.inverse_model, os.path.join(self.model_path, 'im_model'))
 
     def update(self, tape, ac_loss, agent_loss, forward_loss, inverse_loss):
-        # calculate gradients        
+        """ calculate and apply gradients """
         ac_grads = tape.gradient(ac_loss, self.agent.actor_critic_model.trainable_variables)
         fe_grads = tape.gradient(ac_loss, self.agent.feature_extractor.trainable_variables)
         fm_grads = tape.gradient(forward_loss, self.agent.forward_model.trainable_variables)
@@ -100,8 +103,6 @@ class CuriosityAgent():
         self.opt.apply_gradients(zip(fe_grads, self.agent.feature_extractor.trainable_variables))
         self.opt.apply_gradients(zip(fm_grads, self.agent.forward_model.trainable_variables))
         self.opt.apply_gradients(zip(im_grads, self.agent.inverse_model.trainable_variables))
-    
-        print("Gradient calculation and update completed.")
     
     def train(self):
         """ train the model """
@@ -114,7 +115,7 @@ class CuriosityAgent():
         global_steps = 0
         num_updates = self.timesteps // self.batch_size
 
-        for timestamp in range(num_updates):
+        for timestamp in range(1, num_updates+1):
             reset = True
             episode_reward = 0.0
             episode_steps = 0
@@ -129,7 +130,7 @@ class CuriosityAgent():
                         state, _, _, _ = obs
                         reset = False
                     
-                    exp_state = tf.convert_to_tensor(state, dtype=tf.float32)
+                    exp_state = tf.convert_to_tensor(state)
                     exp_state = tf.expand_dims(exp_state, axis=0)
                     policy, value = self.agent.act(exp_state, training=True)
                     entropy = -np.sum(policy * np.log(policy))
@@ -137,7 +138,7 @@ class CuriosityAgent():
                     
                     action_index = np.random.choice(self.action_size, p=np.squeeze(policy))
                     action = self._action_lookup[action_index]
-                    action_one_hot = np.zeros(self.action_size)
+                    action_one_hot = np.zeros(self.action_size, dtype=np.float32)
                     action_one_hot[action_index] = 1
                     action_one_hot = np.reshape(action_one_hot, (1, self.action_size))
 
@@ -146,11 +147,10 @@ class CuriosityAgent():
                     new_state, new_keys, new_health, cur_floor = obs
                     
                     intrinsic_reward, state_features, new_state_features = self.agent.icm_act(state, new_state, action_one_hot, training=True)
-                    # print("Reward: {}, Intrinsic reward: {}".format(reward, intrinsic_reward))
                     total_reward = reward + intrinsic_reward
                     episode_reward += total_reward
-                    global_steps += 1
                     episode_steps += 1
+                    global_steps += 1
 
                     mem.store(new_state,
                               total_reward,
@@ -162,22 +162,21 @@ class CuriosityAgent():
                               new_state_features)
 
                     if done:  # calculate loss
+                        ac_loss, agent_loss, forward_loss, inverse_loss = self.agent.compute_loss(mem, episode_reward, entropy_term)
+                        self.update(tape, ac_loss, agent_loss, forward_loss, inverse_loss)
                         break
-            
-            ac_loss, agent_loss, forward_loss, inverse_loss = self.agent.compute_loss(mem, episode_reward, entropy_term)
-            self.update(tape, ac_loss, agent_loss, forward_loss, inverse_loss)
 
             # clear the experience
             mem.clear()
             rewards.append(episode_reward)
             running_reward = sum(rewards[-10:]) / 10
-            self.log_metrics(episode_reward, running_reward, timestamp)
+            self.log_metrics(episode_reward, running_reward, ac_loss, forward_loss, inverse_loss, agent_loss, timestamp)
 
-            print("Episode: {} | Average Reward: {:.3f} | Episode Reward: {:.3f} | FE Loss: {:.3f} | FM Loss: {:.3f} | IM Loss: {:.3f} | Steps: {} | Total Steps: {}".format(
-                timestamp, running_reward, episode_reward, agent_loss, forward_loss, inverse_loss, episode_steps, global_steps))
+            print("Episode: {} | Average Reward: {:.3f} | Episode Reward: {:.3f} | AC Loss: {:.3f} | FM Loss: {:.3f} | IM Loss: {:.3f} | Steps: {} | Total Steps: {}".format(
+                timestamp, running_reward, episode_reward, ac_loss, forward_loss, inverse_loss, episode_steps, global_steps))
 
             if episode_reward > best_score:
-                print("Found better score: old = {}, new = {}".format(best_score, episode_reward))
+                print("\nFound better score: old = {}, new = {}\n".format(best_score, episode_reward))
                 best_score = episode_reward
                 self.save_model()
 
@@ -193,13 +192,15 @@ class CuriosityAgent():
         done = False
         step_counter = 0
         reward_sum = 0
+        
+        obs = self.env.reset()
+        state, _, _, _ = obs
 
         try:
-            obs = self.env.reset()
-            state, _, _, _ = obs
-            
             while not done:
-                policy, _ = model.act(tf.convert_to_tensor(np.expand_dims(state, axis=0), dtype=tf.float32), training=True)
+                state = tf.convert_to_tensor(state)
+                state = tf.expand_dims(state, axis=0)
+                policy, _ = model.act(state, training=False)
                 action_index = np.random.choice(self.action_size, p=np.squeeze(policy))
                 action = self._action_lookup[action_index]
                 
@@ -209,11 +210,9 @@ class CuriosityAgent():
                     reward_sum += reward
                     step_counter += 1
                 
-                if done:
-                    break
-                
-                print("{}. Reward: {}, action: {}".format(step_counter,
-                                                          reward_sum, action_space.get_action_meaning(action)))
+                if not self.evaluate:
+                    print("{}. Reward: {}, action: {}".format(
+                        step_counter, reward_sum, action_space.get_action_meaning(action)))
         except KeyboardInterrupt:
             print("Received Keyboard Interrupt. Shutting down.")
         finally:

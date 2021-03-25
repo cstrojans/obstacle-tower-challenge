@@ -55,7 +55,7 @@ if __name__ == '__main__':
         # master.build_graph().summary()
         agent.train()
     else:
-        print("Unsupported algorithm passed with --algorithm flag.")
+        print("Unsupported algorithm passed.")
 
     end_time = time.time()
     print("Program execution time = {} secs\n".format(end_time - start_time))

@@ -78,7 +78,6 @@ class TowerAgent(object):
         """
         prediction error between predicted feature space and actual feature space of the state
         """
-        # forward_loss = 0.5 * self.mse_loss(new_state_pred, new_state_features)
         forward_loss = self.mse_loss(new_state_pred, new_state_features)
         return forward_loss
 
@@ -88,13 +87,9 @@ class TowerAgent(object):
         aindex = one-hot encoding from memory
         self.invloss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=aindex), name="invloss")
         """
-        # inverse_loss = self.cross_entropy(pred_acts, np.argmax(action_indices, dim=1))
-        # inverse_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=pred_acts, labels=action_indices))
-
         action_indices = tf.concat(action_indices, axis=0)
-        # action_indices = tf.cast(action_indices, tf.float32)
         cross_entropy_loss = tf.keras.losses.CategoricalCrossentropy()
-        inverse_loss = cross_entropy_loss(action_indices, pred_acts).numpy()
+        inverse_loss = cross_entropy_loss(action_indices, pred_acts)
         return inverse_loss
 
     """
@@ -144,26 +139,6 @@ class TowerAgent(object):
         - Rewards in the past are discounted by multiplying them with gamma
         - These are the labels for our critic
         """
-
-        """
-        gamma = 0.99
-        
-        if memory.dones[-1]:  # game has terminated
-            discounted_reward_sum = 0.
-        else:  # bootstrap starting reward from last state
-            discounted_reward_sum = memory.values[-1]
-        
-        returns = []
-        for i in range(len(memory.rewards)-1, -1, -1):  # reverse buffer r
-            reward = memory.rewards[i]
-            if not memory.dones[i]:
-                discounted_reward_sum = reward + gamma * discounted_reward_sum
-            else:
-                discounted_reward_sum = reward
-            returns.append(discounted_reward_sum)
-        
-        returns.reverse()
-        """
         discounted_reward_sum = 0
         gamma = 0.99
         returns = []
@@ -173,15 +148,6 @@ class TowerAgent(object):
         returns.reverse()
 
         return returns
-
-    """
-    def get_advantage(self, returns, values):
-        advantage = []
-        for ret, val in zip(returns, values):
-            advantage.append(ret - val)
-        
-        return advantage
-    """
     
     def compute_loss(self, memory, episode_reward, entropy):
         returns  = self.get_returns(memory.rewards)
@@ -207,7 +173,6 @@ class TowerAgent(object):
 
         agent_loss = self.isc_lambda * ac_loss + (1 - self.beta) * inverse_loss + self.beta * forward_loss
 
-        print("Loss Values:\nAC Loss = {}\nEntropy = {}\nForward Loss = {}\nInverse Loss = {}\nAgent Loss = {}\n".format(
-            ac_loss, entropy, forward_loss, inverse_loss, agent_loss))
-        # print("Loss Values:\nAC Loss = {}\n".format(ac_loss))
+        # print("Loss Values:\nAC Loss = {}\nEntropy = {}\nForward Loss = {}\nInverse Loss = {}\nAgent Loss = {}\n".format(
+        #     ac_loss, entropy, forward_loss, inverse_loss, agent_loss))
         return ac_loss, agent_loss, forward_loss, inverse_loss
