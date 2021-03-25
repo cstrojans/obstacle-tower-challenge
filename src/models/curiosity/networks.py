@@ -49,9 +49,7 @@ class ConvGruNet(Model):
                                 activation=tf.keras.activations.relu
                                 )
 
-        # LSTM component
-        # models the sequence on agents' movements
-        # an alternate to frame stacking
+        # models the sequence on agents' movements an alternate to frame stacking
         self.gru = layers.GRU(256)
         # self.gru = layers.LSTM(256)
 
@@ -64,7 +62,7 @@ class ConvGruNet(Model):
         # gives the value of an action as feedback to the Actor
         self.values = layers.Dense(units=1, name='value')
 
-    # @tf.function
+    @tf.function
     def call(self, state, training=False):
         state = state / 255.0
 
@@ -81,7 +79,6 @@ class ConvGruNet(Model):
 
         # recurrent input: [batch, timesteps, feature]
         features = tf.expand_dims(features, axis=0)
-        # features, hidden_state = self.gru(features)
         features = self.gru(features)
 
         # Actor-Critic Outputs
@@ -133,7 +130,7 @@ class FeatureExtractor(Model):
                                 activation=tf.keras.activations.relu
                                 )
 
-    # @tf.function
+    @tf.function
     def call(self, state, training=False):
         state = state / 255.0
 
@@ -165,7 +162,7 @@ class ForwardModel(Model):
                                      activation=tf.keras.activations.relu
                                      )
 
-    # @tf.function
+    @tf.function
     def call(self, inputs):
         action_one_hot, state_features = inputs
         concat_features = tf.concat([state_features, action_one_hot], axis=1)
@@ -192,13 +189,15 @@ class InverseModel(Model):
                                      )
         self.op = layers.Dense(units=action_size, activation=tf.nn.softmax)
 
-    # @tf.function
+    @tf.function
     def call(self, inputs):
         state_features, next_state_features = inputs
         concat_features = tf.concat(
             [state_features, next_state_features], axis=1)
+
         pred_action_index = self.fc1(concat_features)
         pred_action_index = self.hidden_1(pred_action_index)
         pred_action_index = self.hidden_2(pred_action_index)
         pred_action_index = self.op(pred_action_index)
+
         return pred_action_index
