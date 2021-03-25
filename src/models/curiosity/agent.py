@@ -20,30 +20,21 @@ class TowerAgent(object):
         self.distribution = tfp.distributions.Categorical
         
         self.ent_coeff = 0.001
+        self.eta = 0.1
         self.value_coeff = 0.5
         self.beta = 0.8
         self.isc_lambda = 0.8
     
     def mse_loss(self, y_true, y_pred):
-        loss = tf.reduce_mean(tf.square(y_true - y_pred))
-        """
-        loss = 0.0
-        # y_true = np.squeeze(y_true)
-        # y_pred = np.squeeze(y_pred)
-
-        for t, p in zip(y_true, y_pred):
-            loss += (t-p) ** 2
-        loss /= len(y_true)
-        """
-        return loss
-    
+        return tf.reduce_mean(tf.square(y_true - y_pred))
+        
     def act(self, state, training=False):
         """ get estimated policy and value """
         policy, value = self.actor_critic_model(state, training=training)
 
         return policy, value
 
-    def icm_act(self, state, new_state, action_one_hot, eta=0.1, training=False):
+    def icm_act(self, state, new_state, action_one_hot, training=False):
         """ calculate intrinsic reward 
         (state, new_state, action) -> intrinsic_reward
 
@@ -60,7 +51,7 @@ class TowerAgent(object):
         
         action_one_hot = tf.cast(action_one_hot, tf.float32)
         pred_state_features = self.forward_model(state_features, action_one_hot)
-        intrinsic_reward = (eta / 2) * self.mse_loss(pred_state_features, new_state_features)
+        intrinsic_reward = (self.eta / 2) * self.mse_loss(pred_state_features, new_state_features)
         
         return intrinsic_reward, state_features, new_state_features
 
@@ -92,30 +83,6 @@ class TowerAgent(object):
         inverse_loss = cross_entropy_loss(action_indices, pred_acts)
         return inverse_loss
 
-    """
-    def value_loss(self, returns, values):
-        # mean squared error between values as true labels and returns as predicted labels
-        return self.mse_loss(values, returns)
-
-    def entropy(self, policy):
-        # ensures there is some randomness or exploration in the actions
-        # entropy = - tf.reduce_mean(tf.reduce_sum(policy * log(policy), 1))
-        
-        entropy = self.distribution(probs=policy).entropy()
-        return entropy[0]
-
-    def policy_loss(self, policy, advantage, action_indices=[]):
-        # A2C policy loss calculation: -1/n * sum(advantage * log(policy)).
-        
-        policy_logs = tf.math.log(tf.clip_by_value(policy, 1e-20, 1.0))
-
-        # only take policies for taken actions
-        pi_logs = tf.math.reduce_sum(tf.math.multiply(policy_logs, action_indices), axis=1)
-        policy_loss = -tf.math.reduce_mean(advantage * pi_logs)
-
-        return policy_loss
-    """
-
     def actor_critic_loss(self, policy, values, returns, entropy):
         actor_loss, critic_loss = 0.0, 0.0
         alpha = 0.5
@@ -124,7 +91,7 @@ class TowerAgent(object):
 
         for policy, val, ret in zip(policy, values, returns):
             advantage = ret - val
-            actor_loss = actor_loss + (-tf.math.log(policy) * advantage)
+            actor_loss = actor_loss + (-tf.math.log(tf.clip_by_value(policy, 1e-20, 1.0)) * advantage)
             critic_loss = critic_loss + (advantage ** 2)
         
         actor_loss = actor_loss / n

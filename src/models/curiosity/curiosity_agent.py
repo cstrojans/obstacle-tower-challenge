@@ -113,35 +113,42 @@ class CuriosityAgent():
         running_reward = 0.
         best_score = 0.
         global_steps = 0
+        num_games = 0
         num_updates = self.timesteps // self.batch_size
+        done = True
+        print("Number of updates = {}".format(num_updates))
 
         for timestamp in range(1, num_updates+1):
-            reset = True
-            episode_reward = 0.0
-            episode_steps = 0
-            entropy_term = 0.0
             agent_loss, forward_loss, inverse_loss = 0.0, 0.0, 0.0
+            entropy_term = 0.0
+
+            if done:
+                episode_reward = 0.0
+                episode_steps = 0
+                num_games += 1
+                obs = self.env.reset()
+                state, _, _, _ = obs
+                done = False
 
             # collect experience
             with tf.GradientTape(persistent=True) as tape:
                 for episode_step in range(self.batch_size):
-                    if reset:
-                        obs = self.env.reset()
-                        state, _, _, _ = obs
-                        reset = False
-                    
+                    # get action as per policy
                     exp_state = tf.convert_to_tensor(state)
                     exp_state = tf.expand_dims(exp_state, axis=0)
                     policy, value = self.agent.act(exp_state, training=True)
+                    
                     entropy = -np.sum(policy * np.log(policy))
                     entropy_term += entropy
                     
+                    # choose most probable action
                     action_index = np.random.choice(self.action_size, p=np.squeeze(policy))
                     action = self._action_lookup[action_index]
                     action_one_hot = np.zeros(self.action_size, dtype=np.float32)
                     action_one_hot[action_index] = 1
                     action_one_hot = np.reshape(action_one_hot, (1, self.action_size))
 
+                    # perform action in game env
                     # TODO: implement frame skipping
                     obs, reward, done, _ = self.env.step(action)
                     new_state, new_keys, new_health, cur_floor = obs
@@ -152,6 +159,7 @@ class CuriosityAgent():
                     episode_steps += 1
                     global_steps += 1
 
+                    # store experience
                     mem.store(new_state,
                               total_reward,
                               done,
@@ -161,24 +169,26 @@ class CuriosityAgent():
                               state_features, # (1, 288)
                               new_state_features)
 
-                    if done:  # calculate loss
-                        ac_loss, agent_loss, forward_loss, inverse_loss = self.agent.compute_loss(mem, episode_reward, entropy_term)
-                        self.update(tape, ac_loss, agent_loss, forward_loss, inverse_loss)
+                    if done:  # game has terminated
                         break
+                
+                ac_loss, agent_loss, forward_loss, inverse_loss = self.agent.compute_loss(mem, episode_reward, entropy_term)
+                self.update(tape, ac_loss, agent_loss, forward_loss, inverse_loss)
 
             # clear the experience
             mem.clear()
-            rewards.append(episode_reward)
-            running_reward = sum(rewards[-10:]) / 10
-            self.log_metrics(episode_reward, running_reward, ac_loss, forward_loss, inverse_loss, agent_loss, timestamp)
 
-            print("Episode: {} | Average Reward: {:.3f} | Episode Reward: {:.3f} | AC Loss: {:.3f} | FM Loss: {:.3f} | IM Loss: {:.3f} | Steps: {} | Total Steps: {}".format(
-                timestamp, running_reward, episode_reward, ac_loss, forward_loss, inverse_loss, episode_steps, global_steps))
+            if done:
+                rewards.append(episode_reward)
+                running_reward = sum(rewards[-10:]) / 10
+                self.log_metrics(episode_reward, running_reward, ac_loss, forward_loss, inverse_loss, agent_loss, timestamp)
+                print("Episode: {} | Average Reward: {:.3f} | Episode Reward: {:.3f} | AC Loss: {:.3f} | FM Loss: {:.3f} | IM Loss: {:.3f} | Steps: {} | Total Steps: {}".format(
+                    num_games, running_reward, episode_reward, ac_loss, forward_loss, inverse_loss, episode_steps, global_steps))
 
-            if episode_reward > best_score:
-                print("\nFound better score: old = {}, new = {}\n".format(best_score, episode_reward))
-                best_score = episode_reward
-                self.save_model()
+                if episode_reward > best_score:
+                    print("\nFound better score: old = {}, new = {}\n".format(best_score, episode_reward))
+                    best_score = episode_reward
+                    self.save_model()
 
         end_time = time.time()
         print("\nTraining complete. Time taken = {} secs".format(end_time - start_time))
