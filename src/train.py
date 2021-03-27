@@ -22,7 +22,7 @@ if __name__ == '__main__':
     parser.add_argument('--gamma', default=0.99, type=float,
                         help='Discount factor of rewards.')
     parser.add_argument('--num-workers', default=0, type=int,
-                        help='Number of workers for asynchronous learning.')
+                        help='Number of workers for asynchronous learning. If not specified, will use number of CPU\'s available')
     parser.add_argument('--save-dir', default='./model_files/', type=str,
                         help='Directory in which you desire to save the model.')
     args = parser.parse_args()
