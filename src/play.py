@@ -31,8 +31,8 @@ if __name__ == '__main__':
                             evaluate=args.evaluate, eval_seeds=eval_seeds, save_dir=args.save_dir)
     elif args.algorithm == 'ppo':
         from models.a3c_ppo import MasterAgent
-        model = MasterAgent(env_path=args.env, train=args.train, evaluate=args.evaluate,
-                             eval_seeds=eval_seeds, save_dir=args.save_dir)
+        model = MasterAgent(env_path=args.env, train=False, evaluate=args.evaluate, eval_seeds=eval_seeds, lr=0.0,
+                            max_eps=0, update_freq=0, gamma=0, num_workers=1, save_dir=args.save_dir)
         
 
     if args.evaluate:  # perform evaluation

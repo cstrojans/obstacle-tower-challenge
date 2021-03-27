@@ -21,7 +21,7 @@ if __name__ == '__main__':
                         help='Learning rate for the shared optimizer.')
     parser.add_argument('--max-eps', default=10, type=int,
                         help='Global maximum number of episodes to run.')
-    parser.add_argument('--update-freq', default=20, type=int,
+    parser.add_argument('--update-freq', default=64, type=int,
                         help='How often to update the global model.')
     parser.add_argument('--gamma', default=0.99, type=float,
                         help='Discount factor of rewards.')
@@ -49,7 +49,7 @@ if __name__ == '__main__':
         from models.a3c_ppo import MasterAgent
         master = MasterAgent(env_path=args.env, train=args.train, evaluate=args.evaluate, lr=args.lr, max_eps=args.max_eps,
                              update_freq=args.update_freq, gamma=args.gamma, num_workers=args.num_workers, save_dir=args.save_dir)
-        master.build_graph().summary()
+        # master.build_graph().summary()
         master.train()
     else:
         print("Unsupported algorithm passed with --algorithm flag.")
