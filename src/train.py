@@ -10,7 +10,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Run A3C algorithm on the Obstacle Tower Challenge game.')
     parser.add_argument('--env', default=None, type=str,
-                        help='Path to OTC game executable.')
+                        help='Path to OTC game executable. If not specified, Unity will automatically pull from registry')
     parser.add_argument('--algorithm', default='a3c', type=str,
                         help='Choose between \'a3c\' and \'random\'.')
     parser.add_argument('--lr', default=1e-3, type=float,
