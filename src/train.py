@@ -40,8 +40,7 @@ if __name__ == '__main__':
         random_agent.train()
     elif args.algorithm == 'a3c':
         if args.distributed_train:
-            master = DistributedMasterAgent(env_path=args.env, train=True, evaluate=False, lr=args.lr, max_eps=args.max_eps,
-                             update_freq=args.update_freq, gamma=args.gamma, num_workers=args.num_workers, save_dir=args.save_dir, plot=args.plot)
+            master = DistributedMasterAgent(env_path=args.env, train=True, evaluate=False, lr=args.lr, max_eps=args.max_eps, update_freq=args.update_freq, gamma=args.gamma, save_dir=args.save_dir, plot=args.plot)
             # master.build_graph().summary()
             master.distributed_train()
         else:
