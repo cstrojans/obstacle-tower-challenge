@@ -1,5 +1,6 @@
 import argparse
 from models.a3c import MasterAgent
+from models.distributed_tf import DistributedMasterAgent
 from models.random_agent import RandomAgent
 from obstacle_tower_env import ObstacleTowerEnv
 import time
@@ -27,6 +28,8 @@ if __name__ == '__main__':
                         help='Directory in which you desire to save the model.')
     parser.add_argument('--plot', default=False, type=bool,
                         help='Plot model results (rewards, loss, etc)')
+    parser.add_argument('--distributed-train', default=False, type=bool,
+                        help='Use distributed tensorflow for faster and scalable training (not valid when algorithm flag is set to \'random\')')
     args = parser.parse_args()
     print(args)
 
@@ -36,10 +39,16 @@ if __name__ == '__main__':
                                    evaluate=False, max_eps=args.max_eps, save_dir=args.save_dir, plot=args.plot)
         random_agent.train()
     elif args.algorithm == 'a3c':
-        master = MasterAgent(env_path=args.env, train=True, evaluate=False, lr=args.lr, max_eps=args.max_eps,
+        if args.distributed_train:
+            master = DistributedMasterAgent(env_path=args.env, train=True, evaluate=False, lr=args.lr, max_eps=args.max_eps,
                              update_freq=args.update_freq, gamma=args.gamma, num_workers=args.num_workers, save_dir=args.save_dir, plot=args.plot)
-        # master.build_graph().summary()
-        master.train()
+            # master.build_graph().summary()
+            master.distributed_train()
+        else:
+            master = MasterAgent(env_path=args.env, train=True, evaluate=False, lr=args.lr, max_eps=args.max_eps,
+                             update_freq=args.update_freq, gamma=args.gamma, num_workers=args.num_workers, save_dir=args.save_dir, plot=args.plot)
+            # master.build_graph().summary()
+            master.train()
     else:
         print("Unsupported algorithm passed with --algorithm flag.")
 
