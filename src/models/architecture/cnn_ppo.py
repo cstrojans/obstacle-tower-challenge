@@ -11,7 +11,7 @@ class CNN(keras.Model):
         self.action_size = action_size
         self.ip_shape = ip_shape
 
-        self.conv1 = layers.Conv2D(filters=16,
+        self.conv1 = layers.Conv2D(filters=32,
                                    kernel_size=(8, 8),
                                    strides=(4, 4),
                                    activation=tf.keras.activations.relu,
@@ -19,16 +19,22 @@ class CNN(keras.Model):
                                    input_shape=self.ip_shape
                                    )
 
-        self.conv2 = layers.Conv2D(filters=32,
+        self.conv2 = layers.Conv2D(filters=64,
                                    kernel_size=(4, 4),
                                    strides=(2, 2),
                                    activation=tf.keras.activations.relu,
                                    data_format='channels_last'
                                    )
 
+        self.conv3 = layers.Conv2D(filters=64,
+                                   kernel_size=(3, 3),
+                                   strides=(1, 1),
+                                   activation=tf.keras.activations.relu,
+                                   data_format='channels_last'
+                                   )
         # reshape
         self.flatten = layers.Flatten()
-        self.fc1 = layers.Dense(units=256,
+        self.fc1 = layers.Dense(units=512,
                                 activation=tf.keras.activations.relu
                                 )
 
@@ -45,7 +51,7 @@ class CNN(keras.Model):
         # x = tf.image.rgb_to_grayscale(inputs)
         x = self.conv1(inputs)
         x = self.conv2(x)
-
+        x = self.conv3(x)
         x = self.flatten(x)
         x = self.fc1(x)
 

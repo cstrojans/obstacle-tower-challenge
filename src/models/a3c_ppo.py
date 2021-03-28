@@ -63,10 +63,10 @@ class MasterAgent():
         self.gamma = gamma
         self.model_path = os.path.join(self.save_dir, 'model_ppo')
         self.model_path_play = os.path.join(self.save_dir, 'model_ppo')
-        # self.global_model = CNN(self.action_size, self.input_shape)
-        self.global_model = CnnGru(self.action_size, self.input_shape)
+        self.global_model = CNN(self.action_size, self.input_shape)
+        # self.global_model = CnnGru(self.action_size, self.input_shape)
         # self.opt = tf.compat.v1.train.AdamOptimizer(lr, epsilon=1e-05, use_locking=True)
-        self.opt = keras.optimizers.Adam(learning_rate=self.lr)
+        self.opt = keras.optimizers.Adam(learning_rate=self.lr, epsilon=1e-05)
         self.loss_fn = keras.losses.Huber()
 
         vec = np.random.random(self.input_shape)  # (84, 84, 3)
@@ -230,10 +230,10 @@ class Worker(threading.Thread):
         self._last_keys = 0
 
         self.global_model = global_model
-        # self.local_model = CNN(self.action_size, self.input_shape)
-        # self.prev_model = CNN(self.action_size, self.input_shape)
-        self.local_model = CnnGru(self.action_size, self.input_shape)
-        self.prev_model = CnnGru(self.action_size, self.input_shape)
+        self.local_model = CNN(self.action_size, self.input_shape)
+        self.prev_model = CNN(self.action_size, self.input_shape)
+        # self.local_model = CnnGru(self.action_size, self.input_shape)
+        # self.prev_model = CnnGru(self.action_size, self.input_shape)
         self.opt = opt_fn
         self.loss_fn = loss_fn
         self.ep_loss = 0.0
@@ -263,11 +263,13 @@ class Worker(threading.Thread):
         return reward
 
     def run(self):
-        batch_size = 128
+        N = 512
+        batch_size = N // 16
         mem = Memory_PPO(batch_size=batch_size)
-        N = 100000
         
-        n_epochs = 4
+        
+        n_epochs = 24
+        # n_epochs = 3
         alpha = 0.0003
 
         n_steps = 0
@@ -342,12 +344,13 @@ class Worker(threading.Thread):
         self.result_queue.put(None)
         self.env.close()
     
+    # @tf.function
     def run_training(self, memory, gamma, eps, loss_fn, n_epochs, batch_size):
-        
+        n_epochs = 24
         clipping_val = 0.2
         critic_discount = 0.5
-        entropy_beta = 0.001
-        gamma = 0.99
+        entropy_beta = 0.01
+        gamma = 0.9975
         gae_lambda = 0.95
         for _ in range(n_epochs):
             state_arr, action_arr, old_prob_arr, \
@@ -382,7 +385,8 @@ class Worker(threading.Thread):
                     critic_values = tf.stack(critic_values)
                     # print(actor_action_probs.shape, old_probs.shape)
                     log_probs = tf.math.log(actor_action_probs)
-                    prob_ratio = tf.math.exp(log_probs) / tf.math.exp(old_probs)
+                    prob_ratio = tf.math.exp(log_probs - old_probs)
+                    # prob_ratio = tf.math.exp(log_probs) / tf.math.exp(old_probs)
 
                     # print(advantage[batch].shape, prob_ratio.shape)
                     weighted_probs = advantage[batch] * prob_ratio
@@ -397,7 +401,8 @@ class Worker(threading.Thread):
                     total_loss = actor_loss + critic_discount * critic_loss \
                          - entropy_beta * entropy
                     # print("Actor Loss: {}, Critic_Loss: {}, Entropy: {}".format(actor_loss, critic_loss, entropy))
-                    grads = tape.gradient(total_loss, self.local_model.trainable_variables)  # calculate local gradients
+                    grads, _ = tf.clip_by_global_norm(tape.gradient(total_loss, self.local_model.trainable_variables), 1.0)  # calculate local gradients
+                    # grads = tape.gradient(total_loss, self.local_model.trainable_variables)  # calculate local gradients
                     self.opt.apply_gradients(zip(grads, self.global_model.trainable_variables))  # send local gradients to global model
                     self.local_model.set_weights(self.global_model.get_weights())  # update local model with new weights
                     

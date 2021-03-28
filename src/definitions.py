@@ -6,7 +6,7 @@ train_env_reset_config = {
 }
 
 eval_env_reset_config = {
-        # "tower-seed": 99,
+        "tower-seed": 99,
         "visual-theme": 0,
         "agent-perspective": 0
     }
