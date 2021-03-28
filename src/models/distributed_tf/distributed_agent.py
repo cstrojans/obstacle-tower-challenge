@@ -9,13 +9,11 @@ import os
 from prettyprinter import pprint
 from queue import Queue
 import tensorflow as tf
-import tensorboard
 from tensorflow import keras
 import threading
 import time
 
-from models.a3c.cnn import CNN
-from models.a3c.gru import CnnGru
+from models.distributed_tf.gru import CnnGru
 from models.common.util import ActionSpace, Memory
 from models.common.util import record, instantiate_environment
 from models.common.constants import *
@@ -24,28 +22,28 @@ matplotlib.use('agg')
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 
-class MasterAgent():
-    """MasterAgent A3C: Asynchronous Advantage Actor Critic Model is a model-free policy gradient algorithm.
+class DistributedMasterAgent():
+    """DistributedMasterAgent: Generic distributed tensorflow based training
     """
 
-    def __init__(self, env_path, train, evaluate, lr, timesteps, batch_size, gamma, num_workers, save_dir, eval_seeds=[]):
+    def __init__(self, env_path, train, evaluate, lr, timesteps, batch_size, gamma, save_dir, plot, eval_seeds=[]):
         self.save_dir = save_dir
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
 
+        self.plot = plot
         self.env_path = env_path
         self.action_size = 7
-        self._action_lookup = {  # action space from fourth place winner
+        self._action_lookup = {
             0: np.asarray([1, 0, 0, 0]),  # forward
             1: np.asarray([2, 0, 0, 0]),  # backward
             2: np.asarray([0, 1, 0, 0]),  # cam left
             3: np.asarray([0, 2, 0, 0]),  # cam right
-            4: np.asarray([1, 0, 1, 0]),  # forward + jump
+            4: np.asarray([1, 0, 1, 0]),  # jump forward
             5: np.asarray([1, 1, 0, 0]),  # forward + cam left
             6: np.asarray([1, 2, 0, 0]),  # forward + cam right
         }
-
-        self.num_workers = multiprocessing.cpu_count() if num_workers == 0 else num_workers
+        
         self.env = instantiate_environment(env_path, train, evaluate, eval_seeds)
         self.input_shape = self.env.observation_space[0].shape  # (84, 84, 3)
 
@@ -54,22 +52,24 @@ class MasterAgent():
         self.timesteps = timesteps
         self.batch_size = batch_size
         self.gamma = gamma
-        self.model_path = os.path.join(self.save_dir, 'model_a3c')
-        
-        # self.global_model = CNN(self.action_size, self.input_shape)
-        self.global_model = CnnGru(self.action_size, self.input_shape)
+        self.model_path = os.path.join(self.save_dir, 'model_a3c_distributed')
+
+        self.mirrored_strategy = tf.distribute.MirroredStrategy()
+        with self.mirrored_strategy.scope():
+            # self.global_model = CNN(self.action_size, self.input_shape)
+            self.global_model = CnnGru(self.action_size, self.input_shape)
+            vec = np.random.random(self.input_shape)  # (84, 84, 3)
+            vec = np.expand_dims(vec, axis=0)  # (1, 84, 84, 3)
+            self.global_model(tf.convert_to_tensor(vec, dtype=tf.float32))
 
         self.current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        train_log_dir = './logs/' + self.current_time + '/a3c/master'
+        train_log_dir = './logs/' + self.current_time + '/distributed_tf/master'
         self.master_summary_writer = tf.summary.create_file_writer(train_log_dir)
 
-        lr_schedule = keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=self.lr, decay_steps=1000, decay_rate=0.9)
-        self.opt = keras.optimizers.Adam(learning_rate=lr_schedule, epsilon=1e-05)
+        # self.opt = tf.compat.v1.train.AdamOptimizer(lr, epsilon=1e-05, use_locking=True)
+        self.opt = keras.optimizers.Adam(learning_rate=self.lr)
 
-        vec = np.random.random(self.input_shape)  # (84, 84, 3)
-        vec = np.expand_dims(vec, axis=0)  # (1, 84, 84, 3)
-        self.global_model(tf.convert_to_tensor(vec, dtype=tf.float32), training=True)
-
+        
     def build_graph(self):
         """ build the model architecture """
         x = keras.Input(shape=(84, 84, 3))
@@ -83,8 +83,8 @@ class MasterAgent():
             tf.summary.scalar('moving_average_reward', avg_reward, step=step)
             tf.summary.scalar('loss', loss, step=step)
             self.master_summary_writer.flush()
-
-    def train(self):
+    
+    def distributed_train(self):
         """ instantiate multiple workers and train the global model """
         start_time = time.time()
         res_queue = Queue()
@@ -101,44 +101,50 @@ class MasterAgent():
             'action_size': self.action_size,
             'action_lookup': self._action_lookup
         }
-        workers = [Worker(res_queue,
-                          worker_id,
-                          self.save_dir,
-                          worker_params) for worker_id in range(1, self.num_workers+1)]
-
-        for i, worker in enumerate(workers, start=1):
-            print("Starting worker {}".format(i))
-            worker.start()
+        
+        worker = Worker(res_queue, worker_params, save_dir=self.save_dir)
+        worker.start()
 
         # record episode reward to plot
         moving_average_rewards = []
         losses = []
-        i = 0
-        while True:
-            result = res_queue.get()
-            i += 1
-            if result:
-                reward, loss = result
-            else:
-                break
-            if reward is None or not loss:
-                break
-            else:
-                self.log_master_metrics(reward, loss, i)
-                moving_average_rewards.append(reward)
-                losses.append(loss)
-        
-        for w in workers:
-            w.join()
+        if self.plot:
+            while True:
+                result = res_queue.get()
+                if result:
+                    reward, loss = result
+                else:
+                    break
+                if not reward or not loss:
+                    break
+                else:
+                    moving_average_rewards.append(reward)
+                    losses.append(loss)
 
+        worker.join()
         end_time = time.time()
+
         print("\nTraining complete. Time taken = {} secs".format(
             end_time - start_time))
 
-        # save the trained model to a file
-        # print('Saving global model to: {}'.format(self.model_path))
-        # keras.models.save_model(self.global_model, self.model_path)
+        if self.plot:
+            fig, (ax1, ax2) = plt.subplots(nrows=2, ncols=1)
+            fig.suptitle('A3C Model')
 
+            ax1.plot(range(1, len(moving_average_rewards) + 1), moving_average_rewards)
+            ax1.set_title('Reward vs Timesteps')
+            ax1.set(xlabel='Episodes', ylabel='Reward')
+
+            ax2.plot(range(1, len(losses) + 1), losses)
+            ax2.set_title('Loss vs Timesteps')
+            ax2.set(xlabel='Episodes', ylabel='Loss')
+            
+            fig.tight_layout()
+            fig.savefig(os.path.join(self.save_dir, 'model_a3c_moving_average.png'))
+
+        # save the trained model to a file
+        print('Saving global model to: {}'.format(self.model_path))
+        keras.models.save_model(self.global_model, self.model_path)
         self.env.close()
 
     def play_single_episode(self):
@@ -196,14 +202,13 @@ class Worker(threading.Thread):
     global_steps = 0
     save_lock = threading.Lock()
 
-    def __init__(self, result_queue, idx, save_dir, params):
+    def __init__(self, result_queue, params, save_dir):
         super(Worker, self).__init__()
         self.result_queue = result_queue
-        self.worker_idx = idx
         self.save_dir = save_dir
-        self.model_path = os.path.join(self.save_dir, 'model_a3c')
+        self.model_path = os.path.join(self.save_dir, 'model_a3c_distributed')
 
-        self.env = ObstacleTowerEnv(params['env_path'], worker_id=self.worker_idx,
+        self.env = ObstacleTowerEnv(params['env_path'], worker_id=1,
                                     retro=False, realtime_mode=False, greyscale=False, config=train_env_reset_config)
 
         self.action_size = params['action_size']
@@ -213,11 +218,13 @@ class Worker(threading.Thread):
         self._last_keys = 0
 
         self.global_model = params['global_model']
-        # self.local_model = CNN(self.action_size, self.input_shape)
-        self.local_model = CnnGru(self.action_size, self.input_shape)
-        
+        self.mirrored_strategy = tf.distribute.MirroredStrategy()
+        with self.mirrored_strategy.scope():
+            # self.local_model = CNN(self.action_size, self.input_shape)
+            self.local_model = CnnGru(self.action_size, self.input_shape)
+    
         self.current_time = params['log_timestamp']
-        train_log_dir = './logs/' + self.current_time + '/worker_' + str(self.worker_idx)
+        train_log_dir = './logs/' + self.current_time + '/worker_1'
         self.worker_summary_writer = tf.summary.create_file_writer(train_log_dir)
         
         self.timesteps = params['timesteps']
@@ -226,6 +233,7 @@ class Worker(threading.Thread):
         self.lr = params['lr']
         self.opt = params['optimizer']
         self.eps = np.finfo(np.float32).eps.item()
+        self.ep_loss = 0.0
 
     def get_updated_reward(self, reward, new_health, new_keys, done):
         new_health = float(new_health)
@@ -247,12 +255,13 @@ class Worker(threading.Thread):
                 reward += 0.1
 
         return reward
-
+    
     def log_worker_metrics(self, episode_reward, loss, step):
         with self.worker_summary_writer.as_default():
             tf.summary.scalar('reward', episode_reward, step=step)
             tf.summary.scalar('loss', loss, step=step)
             self.worker_summary_writer.flush()
+
 
     def run(self):
         mem = Memory()
@@ -312,8 +321,8 @@ class Worker(threading.Thread):
                 Worker.global_steps += ep_steps
 
             grads = tape.gradient(total_loss, self.local_model.trainable_variables)  # calculate local gradients
-            self.opt.apply_gradients(zip(grads, self.global_model.trainable_variables))  # send local gradients to global model
-            self.local_model.set_weights(self.global_model.get_weights())  # update local model with new weights
+            # self.opt.apply_gradients(zip(grads, self.global_model.trainable_variables))  # send local gradients to global model
+            # self.local_model.set_weights(self.global_model.get_weights())  # update local model with new weights
             mem.clear()
             
             if done:
@@ -322,7 +331,7 @@ class Worker(threading.Thread):
 
                 self.log_worker_metrics(ep_reward, ep_loss, ep_count)
                 print("Episode: {} | Average Reward: {:.3f} | Episode Reward: {:.3f} | Loss: {:.3f} | Steps: {} | Total Steps: {} | Worker: {}".format(
-                    Worker.episode_count, Worker.running_reward, ep_reward, ep_loss, ep_steps, Worker.global_steps, self.worker_idx))
+                    Worker.episode_count, Worker.running_reward, ep_reward, ep_loss, ep_steps, Worker.global_steps, 1))
                 self.result_queue.put((Worker.running_reward, total_loss))
                 Worker.episode_count += 1
                 ep_count += 1
