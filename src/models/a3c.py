@@ -26,11 +26,12 @@ class MasterAgent():
     """MasterAgent A3C: Asynchronous Advantage Actor Critic Model is a model-free policy gradient algorithm.
     """
 
-    def __init__(self, env_path, train, evaluate, lr, max_eps, update_freq, gamma, num_workers, save_dir, eval_seeds=[]):
+    def __init__(self, env_path, train, evaluate, lr, max_eps, update_freq, gamma, num_workers, save_dir, plot, eval_seeds=[]):
         self.save_dir = save_dir
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
 
+        self.plot = plot
         self.env_path = env_path
         self.action_size = 7
         self._action_lookup = {
@@ -105,38 +106,41 @@ class MasterAgent():
         # record episode reward to plot
         moving_average_rewards = []
         losses = []
-        while True:
-            result = res_queue.get()
-            if result:
-                reward, loss = result
-            else:
-                break
-            if not reward or not loss:
-                break
-            else:
-                moving_average_rewards.append(reward)
-                losses.append(loss)
+        if self.plot:
+            while True:
+                result = res_queue.get()
+                if result:
+                    reward, loss = result
+                else:
+                    break
+                if not reward or not loss:
+                    break
+                else:
+                    moving_average_rewards.append(reward)
+                    losses.append(loss)
             
         for w in workers:
             w.join()
 
         end_time = time.time()
+
         print("\nTraining complete. Time taken = {} secs".format(
             end_time - start_time))
 
-        fig, (ax1, ax2) = plt.subplots(nrows=2, ncols=1)
-        fig.suptitle('A3C Model')
+        if self.plot:
+            fig, (ax1, ax2) = plt.subplots(nrows=2, ncols=1)
+            fig.suptitle('A3C Model')
 
-        ax1.plot(range(1, len(moving_average_rewards) + 1), moving_average_rewards)
-        ax1.set_title('Reward vs Timesteps')
-        ax1.set(xlabel='Episodes', ylabel='Reward')
+            ax1.plot(range(1, len(moving_average_rewards) + 1), moving_average_rewards)
+            ax1.set_title('Reward vs Timesteps')
+            ax1.set(xlabel='Episodes', ylabel='Reward')
 
-        ax2.plot(range(1, len(losses) + 1), losses)
-        ax2.set_title('Loss vs Timesteps')
-        ax2.set(xlabel='Episodes', ylabel='Loss')
-        
-        fig.tight_layout()
-        fig.savefig(os.path.join(self.save_dir, 'model_a3c_moving_average.png'))
+            ax2.plot(range(1, len(losses) + 1), losses)
+            ax2.set_title('Loss vs Timesteps')
+            ax2.set(xlabel='Episodes', ylabel='Loss')
+            
+            fig.tight_layout()
+            fig.savefig(os.path.join(self.save_dir, 'model_a3c_moving_average.png'))
 
         # save the trained model to a file
         print('Saving global model to: {}'.format(self.model_path))

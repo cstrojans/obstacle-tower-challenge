@@ -25,17 +25,19 @@ if __name__ == '__main__':
                         help='Number of workers for asynchronous learning. If not specified, will use number of CPU\'s available')
     parser.add_argument('--save-dir', default='./model_files/', type=str,
                         help='Directory in which you desire to save the model.')
+    parser.add_argument('--plot', default=False, type=bool,
+                        help='Plot model results (rewards, loss, etc)')
     args = parser.parse_args()
     print(args)
 
     start_time = time.time()
     if args.algorithm == 'random':
         random_agent = RandomAgent(env_path=args.env, train=True,
-                                   evaluate=False, max_eps=args.max_eps, save_dir=args.save_dir)
+                                   evaluate=False, max_eps=args.max_eps, save_dir=args.save_dir, plot=args.plot)
         random_agent.train()
     elif args.algorithm == 'a3c':
         master = MasterAgent(env_path=args.env, train=True, evaluate=False, lr=args.lr, max_eps=args.max_eps,
-                             update_freq=args.update_freq, gamma=args.gamma, num_workers=args.num_workers, save_dir=args.save_dir)
+                             update_freq=args.update_freq, gamma=args.gamma, num_workers=args.num_workers, save_dir=args.save_dir, plot=args.plot)
         # master.build_graph().summary()
         master.train()
     else:
