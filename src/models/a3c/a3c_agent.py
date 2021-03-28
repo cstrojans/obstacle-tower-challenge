@@ -27,7 +27,7 @@ class MasterAgent():
     """MasterAgent A3C: Asynchronous Advantage Actor Critic Model is a model-free policy gradient algorithm.
     """
 
-    def __init__(self, env_path, train, evaluate, lr, max_eps, update_freq, gamma, num_workers, save_dir, eval_seeds=[]):
+    def __init__(self, env_path, train, evaluate, lr, timesteps, batch_size, gamma, num_workers, save_dir, eval_seeds=[]):
         self.save_dir = save_dir
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
@@ -60,8 +60,8 @@ class MasterAgent():
 
         # model parameters
         self.lr = lr
-        self.max_eps = max_eps
-        self.update_freq = update_freq
+        self.timesteps = timesteps
+        self.batch_size = batch_size
         self.gamma = gamma
         self.model_path = os.path.join(self.save_dir, 'model_a3c')
         
@@ -99,8 +99,8 @@ class MasterAgent():
         res_queue = Queue()
         worker_params = {
             'env_path': self.env_path,
-            'episodes': self.max_eps,
-            'batch': self.update_freq,
+            'timesteps': self.timesteps,
+            'batch_size': self.batch_size,
             'gamma': self.gamma,
             'lr': self.lr,
             'optimizer': self.opt,
@@ -231,8 +231,8 @@ class Worker(threading.Thread):
         train_log_dir = './logs/' + self.current_time + '/worker_' + str(self.worker_idx)
         self.worker_summary_writer = tf.summary.create_file_writer(train_log_dir)
         
-        self.max_eps = params['episodes']
-        self.update_freq = params['batch']
+        self.timesteps = params['timesteps']
+        self.batch_size = params['batch_size']
         self.gamma = params['gamma']
         self.lr = params['lr']
         self.opt = params['optimizer']
@@ -268,30 +268,35 @@ class Worker(threading.Thread):
     def run(self):
         mem = Memory()
         rewards = []
-        ep_count = 0
+        ep_count = 1
+        timestep = 0
+        entropy_term = 0
+        ep_reward = 0.
+        ep_steps = 0
+        ep_loss = 0.
 
-        while Worker.episode_count < self.max_eps:
-            entropy_term = 0
-            ep_reward = 0.
-            ep_steps = 0
-            ep_loss = 0.
-            done = False
+        done = False
+        obs = self.env.reset()
+        state, _, _, _ = obs
 
-            obs = self.env.reset()
-            state, _, _, _ = obs
-
+        while timestep <= self.timesteps:
             with tf.GradientTape() as tape:
-                for timestep in range(self.update_freq):
+                for i in range(self.batch_size):
+                    # collect experience
+                    # get action as per policy
                     state = tf.convert_to_tensor(state)
                     state = tf.expand_dims(state, axis=0)
                     action_probs, critic_value = self.local_model(state, training=True)
+
                     entropy = -np.sum(action_probs * np.log(action_probs))
                     entropy_term += entropy
 
+                    # choose most probable action
                     action_index = np.random.choice(
                         self.action_size, p=np.squeeze(action_probs))
                     action = self._action_lookup[action_index]
 
+                    # perform action in game env
                     for i in range(4): # frame skipping
                         obs, reward, done, _ = self.env.step(action)
                         state, new_keys, new_health, cur_floor = obs
@@ -302,45 +307,51 @@ class Worker(threading.Thread):
                         
                         ep_reward += reward
                         ep_steps += 1
-                        Worker.global_steps += 1
+                        timestep += 1
 
+                    # store experience
                     mem.store(action_prob=action_probs[0, action_index],
                               value=critic_value[0, 0],
                               reward=reward)
 
                     if done:
-                        # backpropagation
-                        total_loss = self.local_model.compute_loss(mem, state, done, self.gamma, self.eps, entropy_term)
-                        grads = tape.gradient(total_loss, self.local_model.trainable_variables)  # calculate local gradients
-                        self.opt.apply_gradients(zip(grads, self.global_model.trainable_variables))  # send local gradients to global model
-                        self.local_model.set_weights(self.global_model.get_weights())  # update local model with new weights
-                        
-                        ep_loss += total_loss
                         break
-            
-            ep_count += 1
-            
+                
+                # backpropagation
+                total_loss = self.local_model.compute_loss(mem, state, done, self.gamma, self.eps, entropy_term)
+                ep_loss += total_loss
+                Worker.global_steps += ep_steps
+
+            grads = tape.gradient(total_loss, self.local_model.trainable_variables)  # calculate local gradients
+            self.opt.apply_gradients(zip(grads, self.global_model.trainable_variables))  # send local gradients to global model
+            self.local_model.set_weights(self.global_model.get_weights())  # update local model with new weights
             mem.clear()
-            rewards.append(ep_reward)
-            Worker.running_reward = sum(rewards[-10:]) / 10
-            Worker.episode_count += 1
+            
+            if done:
+                rewards.append(ep_reward)
+                Worker.running_reward = sum(rewards[-10:]) / 10
 
-            self.log_worker_metrics(ep_reward, ep_loss, ep_count)
-            record(Worker.episode_count,
-                   ep_reward,
-                   self.worker_idx,
-                   Worker.running_reward,
-                   self.result_queue,
-                   ep_loss,
-                   ep_steps,
-                   Worker.global_steps)
+                self.log_worker_metrics(ep_reward, ep_loss, ep_count)
+                print("Episode: {} | Average Reward: {:.3f} | Episode Reward: {:.3f} | Loss: {:.3f} | Steps: {} | Total Steps: {} | Worker: {}".format(
+                    Worker.episode_count, Worker.running_reward, ep_reward, ep_loss, ep_steps, Worker.global_steps, self.worker_idx))
+                self.result_queue.put((Worker.running_reward, total_loss))
+                Worker.episode_count += 1
+                ep_count += 1
 
-            # use a lock to save local model and to print to prevent data races.
-            if ep_reward > Worker.best_score:
-                with Worker.save_lock:
-                    print('\nSaving best model to: {}, episode score: {}\n'.format(self.model_path, ep_reward))
-                    keras.models.save_model(self.global_model, self.model_path)
-                    Worker.best_score = ep_reward
+                obs = self.env.reset()
+                state, _, _, _ = obs
+            
+                # use a lock to save local model and to print to prevent data races.
+                if ep_reward > Worker.best_score:
+                    with Worker.save_lock:
+                        print('\nSaving best model to: {}, episode score: {}\n'.format(self.model_path, ep_reward))
+                        keras.models.save_model(self.global_model, self.model_path)
+                        Worker.best_score = ep_reward
+                
+                entropy_term = 0
+                ep_reward = 0.
+                ep_steps = 0
+                ep_loss = 0.
         
         self.result_queue.put(None)
         self.env.close()

@@ -19,8 +19,8 @@ if __name__ == '__main__':
     # create the parser for the "a3c" agent
     parser_b = subparsers.add_parser('a3c', help='command line arguments for the A3C agent')
     parser_b.add_argument('--lr', default=1e-4, type=float, help='Learning rate for the shared optimizer.')
-    parser_b.add_argument('--max-eps', default=10, type=int, help='Maximum number of episodes (games) to run.')
-    parser_b.add_argument('--update-freq', default=10000, type=int, help='How often to update the global model.')
+    parser_b.add_argument('--timesteps', default=10000, type=int, help='Maximum number of episodes (games) to run.')
+    parser_b.add_argument('--batch-size', default=500, type=int, help='How often to update the global model.')
     parser_b.add_argument('--gamma', default=0.99, type=float, help='Discount factor of rewards.')
     parser_b.add_argument('--num-workers', default=0, type=int, help='Number of workers for asynchronous learning.')
     parser_b.add_argument('--save-dir', default='./model_files/', type=str, help='Directory in which you desire to save the model.')
@@ -29,7 +29,7 @@ if __name__ == '__main__':
     parser_c = subparsers.add_parser('curiosity', help='command line arguments for the Curiosity agent')
     parser_c.add_argument('--lr', default=1e-4, type=float, help='Learning rate for the shared optimizer.')
     parser_c.add_argument('--timesteps', default=10000, type=int, help='Maximum number of episodes (games) to run.')
-    parser_c.add_argument('--batch-size', default=512, type=int, help='How often to update the global model.')
+    parser_c.add_argument('--batch-size', default=500, type=int, help='How often to update the global model.')
     parser_c.add_argument('--gamma', default=0.99, type=float, help='Discount factor of rewards.')
     parser_c.add_argument('--save-dir', default='./model_files/', type=str, help='Directory in which you desire to save the model.')
 
@@ -44,8 +44,8 @@ if __name__ == '__main__':
         agent.train()
     elif args.subparser_name == 'a3c':
         from models.a3c.a3c_agent import MasterAgent
-        agent = MasterAgent(env_path=args.env, train=True, evaluate=False, lr=args.lr, max_eps=args.max_eps,
-                             update_freq=args.update_freq, gamma=args.gamma, num_workers=args.num_workers, save_dir=args.save_dir)
+        agent = MasterAgent(env_path=args.env, train=True, evaluate=False, lr=args.lr, timesteps=args.timesteps,
+                             batch_size=args.batch_size, gamma=args.gamma, num_workers=args.num_workers, save_dir=args.save_dir)
         # agent.build_graph().summary()
         agent.train()
     elif args.subparser_name == 'curiosity':

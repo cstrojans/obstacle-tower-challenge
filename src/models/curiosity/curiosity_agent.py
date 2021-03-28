@@ -117,7 +117,7 @@ class CuriosityAgent():
         episode_reward = 0.0
         episode_steps = 0
         episode = 1
-        timestep = 1
+        timestep = 0
 
         while timestep <= self.timesteps:
             with tf.GradientTape(persistent=True) as tape:

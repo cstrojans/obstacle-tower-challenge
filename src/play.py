@@ -25,7 +25,7 @@ if __name__ == '__main__':
     elif args.algorithm == 'a3c':
         from models.a3c.a3c_agent import MasterAgent
         agent = MasterAgent(env_path=args.env, train=False, evaluate=args.evaluate, eval_seeds=eval_seeds, lr=0.0,
-                            max_eps=0, update_freq=0, gamma=0, num_workers=1, save_dir=args.save_dir)
+                            timesteps=0, batch_size=0, gamma=0, num_workers=1, save_dir=args.save_dir)
     elif args.algorithm == 'curiosity':
         from models.curiosity.curiosity_agent import CuriosityAgent
         agent = CuriosityAgent(env_path=args.env, train=False, evaluate=args.evaluate,
