@@ -22,7 +22,7 @@ class RandomAgent:
         max_eps: Maximum number of episodes to run agent for.
     """
 
-    def __init__(self, env_path, train=False, evaluate=False, eval_seeds=[], max_eps=100, save_dir=None):
+    def __init__(self, env_path, train=False, evaluate=False, eval_seeds=[], max_eps=100, save_dir=None, plot=False):
         if train:
             self.env = ObstacleTowerEnv(
                 env_path, worker_id=0, retro=False, realtime_mode=False, config=train_env_reset_config)
@@ -40,6 +40,7 @@ class RandomAgent:
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
 
+        self.plot = plot
         self.res_queue = Queue()
 
     def train(self):
@@ -58,8 +59,10 @@ class RandomAgent:
                 steps += 1
                 reward_sum += reward
 
-            # Record statistics
-            moving_average_rewards.append(reward_sum)
+            if self.plot:
+                # Record statistics
+                moving_average_rewards.append(reward_sum)
+
             reward_avg += reward_sum
             self.global_moving_average_reward = record(
                 episode, reward_sum, 0, self.global_moving_average_reward, self.res_queue, 0, steps)
@@ -69,11 +72,12 @@ class RandomAgent:
         print("Average score across {} episodes: {}".format(
             self.max_episodes, final_avg))
 
-        plt.plot(moving_average_rewards)
-        plt.ylabel('Moving average episode reward')
-        plt.xlabel('Step')
-        plt.savefig(os.path.join(self.save_dir,
-                                 'model_random_moving_average.png'))
+        if self.plot:
+            plt.plot(moving_average_rewards)
+            plt.ylabel('Moving average episode reward')
+            plt.xlabel('Step')
+            plt.savefig(os.path.join(self.save_dir,
+                                     'model_random_moving_average.png'))
 
         self.env.close()
         return final_avg

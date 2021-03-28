@@ -22,11 +22,11 @@ matplotlib.use('agg')
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 
-class MasterAgent():
-    """MasterAgent A3C: Asynchronous Advantage Actor Critic Model is a model-free policy gradient algorithm.
+class DistributedMasterAgent():
+    """DistributedMasterAgent: Generic distributed tensorflow based training
     """
 
-    def __init__(self, env_path, train, evaluate, lr, max_eps, update_freq, gamma, num_workers, save_dir, plot, eval_seeds=[]):
+    def __init__(self, env_path, train, evaluate, lr, max_eps, update_freq, gamma, save_dir, plot, eval_seeds=[]):
         self.save_dir = save_dir
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
@@ -43,7 +43,7 @@ class MasterAgent():
             5: np.asarray([1, 1, 0, 0]),  # forward + cam left
             6: np.asarray([1, 2, 0, 0]),  # forward + cam right
         }
-        self.num_workers = multiprocessing.cpu_count() if num_workers == 0 else num_workers
+        
         if train:
             self.env = ObstacleTowerEnv(
                 env_path, worker_id=0, retro=False, realtime_mode=False, greyscale=False, config=train_env_reset_config)
@@ -62,18 +62,21 @@ class MasterAgent():
         self.max_eps = max_eps
         self.update_freq = update_freq
         self.gamma = gamma
-        self.model_path = os.path.join(self.save_dir, 'model_a3c')
+        self.model_path = os.path.join(self.save_dir, 'model_a3c_distributed')
         # self.global_model = CNN(self.action_size, self.input_shape)
-        self.global_model = CnnGru(self.action_size, self.input_shape)
+
+        self.mirrored_strategy = tf.distribute.MirroredStrategy()
+        with self.mirrored_strategy.scope():
+            self.global_model = CnnGru(self.action_size, self.input_shape)
+            vec = np.random.random(self.input_shape)  # (84, 84, 3)
+            vec = np.expand_dims(vec, axis=0)  # (1, 84, 84, 3)
+            self.global_model(tf.convert_to_tensor(vec, dtype=tf.float32))
 
         # self.opt = tf.compat.v1.train.AdamOptimizer(lr, epsilon=1e-05, use_locking=True)
         self.opt = keras.optimizers.Adam(learning_rate=self.lr)
         self.loss_fn = keras.losses.Huber()
 
-        vec = np.random.random(self.input_shape)  # (84, 84, 3)
-        vec = np.expand_dims(vec, axis=0)  # (1, 84, 84, 3)
-        self.global_model(tf.convert_to_tensor(vec, dtype=tf.float32))
-
+        
     def build_graph(self):
         """ build the model architecture """
         x = keras.Input(shape=(84, 84, 3))
@@ -82,11 +85,12 @@ class MasterAgent():
             self.save_dir, 'model_a3c_architecture.png'), dpi=96, show_shapes=True, show_layer_names=True, expand_nested=False)
         return model
 
-    def train(self):
+    def distributed_train(self):
         """ instantiate multiple workers and train the global model """
         start_time = time.time()
         res_queue = Queue()
-        workers = [Worker(self.action_size,
+        
+        worker = Worker(self.action_size,
                           self._action_lookup,
                           self.global_model,
                           self.opt,
@@ -95,13 +99,10 @@ class MasterAgent():
                           self.update_freq,
                           self.gamma,
                           res_queue,
-                          worker_id,
                           self.env_path,
-                          save_dir=self.save_dir) for worker_id in range(1, self.num_workers+1)]
+                          save_dir=self.save_dir)
 
-        for i, worker in enumerate(workers, start=1):
-            print("Starting worker {}".format(i))
-            worker.start()
+        worker.start()
 
         # record episode reward to plot
         moving_average_rewards = []
@@ -118,9 +119,8 @@ class MasterAgent():
                 else:
                     moving_average_rewards.append(reward)
                     losses.append(loss)
-            
-        for w in workers:
-            w.join()
+
+        worker.join()
 
         end_time = time.time()
 
@@ -197,13 +197,12 @@ class Worker(threading.Thread):
     save_lock = threading.Lock()
 
     def __init__(self, action_size, action_lookup, global_model, opt_fn, loss_fn, max_eps,
-                 update_freq, gamma, result_queue, idx, env_path, save_dir):
+                 update_freq, gamma, result_queue, env_path, save_dir):
         super(Worker, self).__init__()
         self.result_queue = result_queue
-        self.worker_idx = idx
         self.save_dir = save_dir
 
-        self.env = ObstacleTowerEnv(env_path, worker_id=self.worker_idx,
+        self.env = ObstacleTowerEnv(env_path, worker_id=1,
                                     retro=False, realtime_mode=False, greyscale=False, config=train_env_reset_config)
         self.action_size = action_size
         self._action_lookup = action_lookup
@@ -213,7 +212,11 @@ class Worker(threading.Thread):
 
         self.global_model = global_model
         # self.local_model = CNN(self.action_size, self.input_shape)
-        self.local_model = CnnGru(self.action_size, self.input_shape)
+
+        self.mirrored_strategy = tf.distribute.MirroredStrategy()
+        with self.mirrored_strategy.scope():
+            self.local_model = CnnGru(self.action_size, self.input_shape)
+
         self.opt = opt_fn
         self.loss_fn = loss_fn
         self.ep_loss = 0.0
@@ -222,7 +225,7 @@ class Worker(threading.Thread):
         self.gamma = gamma
         # smallest number such that 1.0 + eps != 1.0
         self.eps = np.finfo(np.float32).eps.item()
-        self.model_path = os.path.join(self.save_dir, 'model_a3c')
+        self.model_path = os.path.join(self.save_dir, 'model_a3c_distributed')
 
     def get_updated_reward(self, reward, new_health, new_keys, done):
         new_health = float(new_health)
@@ -283,8 +286,8 @@ class Worker(threading.Thread):
                 # backpropagation
                 total_loss = self.local_model.compute_loss(mem, state, done, self.gamma, self.eps, self.loss_fn)
                 grads = tape.gradient(total_loss, self.local_model.trainable_variables)  # calculate local gradients
-                self.opt.apply_gradients(zip(grads, self.global_model.trainable_variables))  # send local gradients to global model
-                self.local_model.set_weights(self.global_model.get_weights())  # update local model with new weights
+                # self.opt.apply_gradients(zip(grads, self.global_model.trainable_variables))  # send local gradients to global model
+                # self.local_model.set_weights(self.global_model.get_weights())  # update local model with new weights
                 
                 self.ep_loss += total_loss
                 mem.clear()
@@ -292,7 +295,7 @@ class Worker(threading.Thread):
             Worker.episode_count += 1
             Worker.running_reward = record(Worker.episode_count,
                                         ep_reward,
-                                        self.worker_idx,
+                                        1,
                                         Worker.running_reward,
                                         self.result_queue,
                                         self.ep_loss,
