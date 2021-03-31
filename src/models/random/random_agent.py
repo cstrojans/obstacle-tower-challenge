@@ -21,24 +21,25 @@ class RandomAgent:
         max_eps: Maximum number of episodes to run agent for.
     """
 
-    def __init__(self, env_path, train=False, evaluate=False, eval_seeds=[], max_eps=100, save_dir=None):
+    def __init__(self, env_path, train=False, evaluate=False, eval_seeds=[], max_eps=100, save_dir=None, plot=False):
         if train:
             self.env = ObstacleTowerEnv(
-                env_path, worker_id=0, retro=True, realtime_mode=False, config=train_env_reset_config)
+                env_path, worker_id=0, retro=False, realtime_mode=False, config=train_env_reset_config)
         else:
             if evaluate:
                 self.env = ObstacleTowerEnv(
-                    env_path, worker_id=0, retro=True, realtime_mode=False, config=eval_env_reset_config)
+                    env_path, worker_id=0, retro=False, realtime_mode=False, config=eval_env_reset_config)
                 self.env = ObstacleTowerEvaluation(self.env, eval_seeds)
             else:
                 self.env = ObstacleTowerEnv(
-                    env_path, worker_id=0, retro=True, realtime_mode=True, config=eval_env_reset_config)
+                    env_path, worker_id=0, retro=False, realtime_mode=True, config=eval_env_reset_config)
         self.max_episodes = max_eps
         self.global_moving_average_reward = 0
         self.save_dir = save_dir
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
 
+        self.plot = plot
         self.res_queue = Queue()
 
     def train(self):
@@ -59,8 +60,10 @@ class RandomAgent:
                 global_steps += 1
                 reward_sum += reward
 
-            # Record statistics
-            moving_average_rewards.append(reward_sum)
+            if self.plot:
+                # Record statistics
+                moving_average_rewards.append(reward_sum)
+
             reward_avg += reward_sum
             self.global_moving_average_reward = record(
                 episode, reward_sum, 0, self.global_moving_average_reward, self.res_queue, 0, steps, global_steps)
@@ -70,11 +73,12 @@ class RandomAgent:
         print("Average score across {} episodes: {}".format(
             self.max_episodes, final_avg))
 
-        plt.plot(moving_average_rewards)
-        plt.ylabel('Moving average episode reward')
-        plt.xlabel('Step')
-        plt.savefig(os.path.join(self.save_dir,
-                                 'model_random_moving_average.png'))
+        if self.plot:
+            plt.plot(moving_average_rewards)
+            plt.ylabel('Moving average episode reward')
+            plt.xlabel('Step')
+            plt.savefig(os.path.join(self.save_dir,
+                                     'model_random_moving_average.png'))
 
         self.env.close()
         return final_avg
@@ -85,16 +89,16 @@ class RandomAgent:
         done = False
         step_counter = 0
         reward_sum = 0
-        state = self.env.reset()  # (84, 84, 3)
+        obs = self.env.reset()
+        state, _, _, _ = obs
 
         try:
             while not done:
                 action = self.env.action_space.sample()
                 obs, reward, done, info = self.env.step(action)
                 reward_sum += reward
-                if not self.evaluate:
-                    print("{}. Reward: {}, action: {}".format(
-                        step_counter, reward_sum, action_space.get_action_meaning(action)))
+                print("{}. Reward: {}, action: {}".format(
+                    step_counter, reward_sum, action_space.get_action_meaning(action)))
                 step_counter += 1
         except KeyboardInterrupt:
             print("Received Keyboard Interrupt. Shutting down.")
