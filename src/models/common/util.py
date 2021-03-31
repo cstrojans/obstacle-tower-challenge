@@ -51,6 +51,49 @@ class CuriosityMemory:
         self.state_features.clear()
         self.new_state_features.clear()
 
+class Memory_PPO:
+    def __init__(self, batch_size):
+        self.states = []
+        self.actions = []
+        self.action_probs = []
+        self.values = []
+        self.rewards = []
+        self.is_terminals = []
+
+        self.batch_size = batch_size
+        
+    def generate_batches(self):
+        n_states = len(self.states)
+        batch_start = np.arange(0, n_states, self.batch_size)
+        indices = np.arange(n_states, dtype=np.int64)
+        np.random.shuffle(indices)
+        batches = [indices[i:i+self.batch_size] for i in batch_start]
+
+        return np.array(self.states),\
+                np.array(self.actions),\
+                np.array(self.action_probs),\
+                np.array(self.values),\
+                np.array(self.rewards),\
+                np.array(self.is_terminals),\
+                batches
+    
+    def store(self, state, action, action_prob, value, reward, is_terminal):
+        self.states.append(state)
+        self.actions.append(action)
+        self.action_probs.append(action_prob)
+        self.rewards.append(reward)
+        self.is_terminals.append(is_terminal)
+        self.values.append(value)
+
+    def clear(self):
+        self.states = []
+        self.actions = []
+        self.action_probs = []
+        self.values = []
+        self.rewards = []
+        self.is_terminals = []
+
+
 class ActionSpace:
     def __init__(self):
         """__init__ gets the meaning of action in a multi-discrete space from a scalar space

@@ -17,7 +17,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     print(args)
 
-    eval_seeds = [1001, 1002, 1003, 1004, 1005]
+    # eval_seeds = [1001, 1002, 1003, 1004, 1005]
+    eval_seeds = [1001]
     if args.algorithm == 'random':
         from models.random.random_agent import RandomAgent
         agent = RandomAgent(env_path=args.env, train=False,
@@ -30,6 +31,10 @@ if __name__ == '__main__':
         from models.curiosity.curiosity_agent import CuriosityAgent
         agent = CuriosityAgent(env_path=args.env, train=False, evaluate=args.evaluate,
                                eval_seeds=eval_seeds, lr=0.0, timesteps=0, batch_size=0, gamma=0, save_dir=args.save_dir)
+    elif args.algorithm == 'ppo':
+        from models.ppo.ppo_agent import MasterAgent
+        model = MasterAgent(env_path=args.env, train=False, evaluate=args.evaluate, eval_seeds=eval_seeds, lr=0.0,
+                            max_eps=0, update_freq=0, gamma=0, num_workers=1, save_dir=args.save_dir)
     else:
         print("Unsupported algorithm passed with --algorithm flag.")
     

@@ -38,6 +38,19 @@ if __name__ == '__main__':
     parser_c.add_argument('--gamma', default=0.99, type=float, help='Discount factor of rewards.')
     parser_c.add_argument('--save-dir', default='./model_files/', type=str, help='Directory in which you desire to save the model.')
 
+    # Create the parser for the "ppo" agent
+    parser_ppo = subparsers.add_parser('ppo', help='command line arguments for the PPO agent')
+    parser_ppo.add_argument('--lr', default=1e-4, type=float, help='Learning rate for the shared optimizer.')
+    parser_ppo.add_argument('--max-eps', default=10, type=int, help='Maximum number of episodes (games) to run.')
+    parser_ppo.add_argument('--update-freq', default=10000, type=int, help='How often to update the global model.')
+    parser_ppo.add_argument('--timesteps', default=10000, type=int, help='Maximum number of episodes (games) to run.')
+    parser_ppo.add_argument('--batch-size', default=500, type=int, help='How often to update the global model.')
+    parser_ppo.add_argument('--gamma', default=0.99, type=float, help='Discount factor of rewards.')
+    parser_ppo.add_argument('--num-workers', default=0, type=int, help='Number of workers for asynchronous learning.')
+    parser_ppo.add_argument('--save-dir', default='./model_files/', type=str, help='Directory in which you desire to save the model.')
+    # parser_ppo.add_argument('--distributed-train', default=False, action='store_true',
+    #                       help='Use distributed tensorflow for faster and scalable training (not valid when algorithm flag is set to \'random\')')
+    parser_ppo.add_argument('--plot', default=False, type=bool, help='Plot model results (rewards, loss, etc)')
     args, argv = parser.parse_known_args(sys.argv[1:])
     print(args)
 
@@ -66,6 +79,12 @@ if __name__ == '__main__':
                              batch_size=args.batch_size, gamma=args.gamma, save_dir=args.save_dir)
         # master.build_graph().summary()
         agent.train()
+    elif args.subparser_name == 'ppo':
+        from models.ppo.ppo_agent import MasterAgent
+        master = MasterAgent(env_path=args.env, train=True, evaluate=False, lr=args.lr, timesteps=args.timesteps,
+                                batch_size=args.batch_size, gamma=args.gamma, num_workers=args.num_workers, save_dir=args.save_dir)
+        # master.build_graph().summary()
+        master.train()
     else:
         print("Unsupported algorithm passed.")
 
