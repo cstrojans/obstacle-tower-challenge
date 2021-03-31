@@ -3,7 +3,6 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 from tensorflow.python import keras
 from tensorflow.python.keras import layers
-from models.util import normalized_columns_initializer
 
 
 class CnnGru(keras.Model):
@@ -21,6 +20,7 @@ class CnnGru(keras.Model):
                                    data_format='channels_last',
                                    input_shape=self.ip_shape
                                    )
+        self.bn1 = layers.BatchNormalization()
 
         # (9, 9, 64)
         self.conv2 = layers.Conv2D(filters=32,
@@ -29,23 +29,25 @@ class CnnGru(keras.Model):
                                    activation=tf.keras.activations.relu,
                                    data_format='channels_last'
                                    )
+        self.bn2 = layers.BatchNormalization()
 
         # (7, 7, 64)
-        self.conv3 = layers.Conv2D(filters=16,
+        self.conv3 = layers.Conv2D(filters=32,
                                    kernel_size=(3, 3),
                                    strides=(1, 1),
                                    activation=tf.keras.activations.relu,
                                    data_format='channels_last'
                                    )
+        self.bn3 = layers.BatchNormalization()
 
         # reshape
         self.flatten = layers.Flatten()
-        self.fc1 = layers.Dense(units=128,
+        self.fc1 = layers.Dense(units=256,
                                 activation=tf.keras.activations.relu
                                 )
 
         # RNN - temporal dependencies
-        self.gru = layers.GRU(128)
+        self.gru = layers.LSTM(256)
 
         # policy output layer (Actor)
         self.policy_logits = layers.Dense(units=self.action_size, activation=tf.nn.softmax, name='policy_logits')
@@ -54,12 +56,16 @@ class CnnGru(keras.Model):
         self.values = layers.Dense(units=1, name='value')
 
     @tf.function
-    def call(self, inputs):
+    def call(self, inputs, training=False):
         # converts RGB image to grayscale
         # x = tf.image.rgb_to_grayscale(inputs)
-        x = self.conv1(inputs)
+        x = inputs / 255.0
+        x = self.conv1(x)
+        x = self.bn1(x, training=training)
         x = self.conv2(x)
+        x = self.bn2(x, training=training)
         x = self.conv3(x)
+        x = self.bn3(x, training=training)
 
         x = self.flatten(x)
         x = self.fc1(x)
@@ -80,6 +86,8 @@ class CnnGru(keras.Model):
         - Rewards in the past are discounted by multiplying them with gamma
         - These are the labels for our critic
         """
+
+        """
         if done:  # game has terminated
             discounted_reward_sum = 0.
         else:  # bootstrap starting reward from last state
@@ -87,28 +95,34 @@ class CnnGru(keras.Model):
             last_state = tf.expand_dims(last_state, axis=0)
             _, critic_value = self.call(last_state)
             discounted_reward_sum = critic_value[0, 0]
-        
+        """
+
+        discounted_reward_sum = 0
         returns = []
         for reward in memory.rewards_history[::-1]:  # reverse buffer r
             discounted_reward_sum = reward + gamma * discounted_reward_sum
             returns.append(discounted_reward_sum)
         returns.reverse()
-        returns = np.array(returns)
-        
         return returns
     
-    def compute_loss(self, memory, last_state, done, gamma, eps, loss_fn):
+    def compute_loss(self, memory, last_state, done, gamma, eps, entropy):
         """ calculate actor and critic loss """
+        alpha = 0.5
+        beta = 0.001
         returns = self.get_returns(memory, last_state, done, gamma, eps)
-        actor_losses, critic_losses = [], []
+        actor_loss, critic_loss = 0.0, 0.0
         history = zip(memory.action_probs_history, memory.critic_value_history, returns)
-        
-        for action_prob, value, ret in history:
-            advantage = ret - value
-            actor_losses.append(tf.math.log(action_prob) * advantage)
-            critic_losses.append(advantage ** 2)  # Mean Squared Error
-            # critic_losses.append(loss_fn(tf.expand_dims(value, 0), tf.expand_dims(ret, 0)))  # Huber Loss
+        n = len(returns)
 
-        total_loss = (-sum(actor_losses) / len(actor_losses)) + 0.5 * sum(critic_losses)
+        for action_prob, value, ret in history:
+            # advantage: how much better it is to take a specific action compared to 
+            # the average, general action at the given state.
+            advantage = ret - value
+            actor_loss = actor_loss + (-tf.math.log(action_prob) * advantage)
+            critic_loss = critic_loss + (advantage ** 2)
+
+        actor_loss = actor_loss / n
+        critic_loss = critic_loss / n
+        total_loss = actor_loss + alpha * critic_loss + beta * entropy
         
         return total_loss
