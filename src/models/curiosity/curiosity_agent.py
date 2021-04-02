@@ -64,14 +64,14 @@ class CuriosityAgent():
     #         self.save_dir, 'model_curiosity_architecture.png'), dpi=96, show_shapes=True, show_layer_names=True, expand_nested=False)
     #     return model
 
-    def log_metrics(self, episode_reward, running_reward, ac_loss, forward_loss, inverse_loss, agent_loss, episode):
+    def log_metrics(self, episode_reward, running_reward, ac_loss, forward_loss, inverse_loss, feature_extractor_loss, episode):
         with self.summary_writer.as_default():
             tf.summary.scalar('episode_reward', episode_reward, step=episode)
             tf.summary.scalar('moving_average_reward', running_reward, step=episode)
             tf.summary.scalar('actor_critic_loss', ac_loss, step=episode)
             tf.summary.scalar('forward_model_loss', forward_loss, step=episode)
             tf.summary.scalar('inverse_model_loss', inverse_loss, step=episode)
-            tf.summary.scalar('agent_loss', agent_loss, step=episode)
+            tf.summary.scalar('feature_extractor_loss', feature_extractor_loss, step=episode)
             self.summary_writer.flush()
     
     def load_model(self):
@@ -88,10 +88,10 @@ class CuriosityAgent():
         tf.keras.models.save_model(self.agent.forward_model, os.path.join(self.model_path, 'fm_model'))
         tf.keras.models.save_model(self.agent.inverse_model, os.path.join(self.model_path, 'im_model'))
 
-    def update(self, tape, ac_loss, agent_loss, forward_loss, inverse_loss):
+    def update(self, tape, ac_loss, feature_extractor_loss, forward_loss, inverse_loss):
         """ calculate and apply gradients """
         ac_grads = tape.gradient(ac_loss, self.agent.actor_critic_model.trainable_variables)
-        fe_grads = tape.gradient(ac_loss, self.agent.feature_extractor.trainable_variables)
+        fe_grads = tape.gradient(feature_extractor_loss, self.agent.feature_extractor.trainable_variables)
         fm_grads = tape.gradient(forward_loss, self.agent.forward_model.trainable_variables)
         im_grads = tape.gradient(inverse_loss, self.agent.inverse_model.trainable_variables)
         
@@ -103,6 +103,8 @@ class CuriosityAgent():
     def train(self):
         """ train the model """
         start_time = time.time()
+
+        self.agent.restore_checkpoint()
         
         mem = CuriosityMemory()
         rewards = []
@@ -112,9 +114,10 @@ class CuriosityAgent():
         obs = self.env.reset()
         state, _, _, _ = obs
 
-        agent_loss, forward_loss, inverse_loss = 0.0, 0.0, 0.0
+        agent_loss, feature_extractor_loss, forward_loss, inverse_loss = 0.0, 0.0, 0.0, 0.0
         entropy_term = 0.0
         episode_reward = 0.0
+        extrinsic_reward = 0.0
         episode_steps = 0
         episode = 1
         timestep = 0
@@ -144,6 +147,7 @@ class CuriosityAgent():
                     
                     intrinsic_reward, state_features, new_state_features = self.agent.icm_act(state, new_state, action_one_hot, training=True)
                     total_reward = self.ext_coeff * reward + self.int_coeff * intrinsic_reward
+                    extrinsic_reward += reward
                     episode_reward += total_reward
                     episode_steps += 1
                     timestep += 1
@@ -161,31 +165,36 @@ class CuriosityAgent():
                     if done:
                         break
                 
-                ac_loss, agent_loss, forward_loss, inverse_loss = self.agent.compute_loss(mem, episode_reward, entropy_term)
+                ac_loss, feature_extractor_loss, forward_loss, inverse_loss = self.agent.compute_loss(mem, episode_reward, entropy_term)
             
-            self.update(tape, ac_loss, agent_loss, forward_loss, inverse_loss)
+            self.update(tape, ac_loss, feature_extractor_loss, forward_loss, inverse_loss)
             mem.clear()  # clear the experience
 
             if done:  # reset parameters and print episode statistics
-                rewards.append(episode_reward)
+                rewards.append(extrinsic_reward)
                 running_reward = sum(rewards[-10:]) / 10
-                self.log_metrics(episode_reward, running_reward, ac_loss, forward_loss, inverse_loss, agent_loss, episode)
-                print("Episode: {} | Average Reward: {:.3f} | Episode Reward: {:.3f} | AC Loss: {:.3f} | FM Loss: {:.3f} | IM Loss: {:.3f} | Steps: {} | Total Steps: {}".format(
-                    episode, running_reward, episode_reward, ac_loss, forward_loss, inverse_loss, episode_steps, timestep))
+                self.log_metrics(extrinsic_reward, running_reward, ac_loss, forward_loss, inverse_loss, feature_extractor_loss, episode)
+                print("Episode: {} | Average Reward: {:.3f} | Episode Reward: {:.3f} | AC Loss: {:.3f} | FE Loss: {:.3f} | FM Loss: {:.3f} | IM Loss: {:.3f} | Steps: {} | Total Steps: {}".format(
+                    episode, running_reward, extrinsic_reward, ac_loss, feature_extractor_loss, forward_loss, inverse_loss, episode_steps, timestep))
                 episode += 1
 
                 obs = self.env.reset()
                 state, _, _, _ = obs
+
+                if extrinsic_reward > best_score:
+                    print("Found better score: old = {}, new = {}".format(best_score, extrinsic_reward))
+                    best_score = extrinsic_reward
+                    self.agent.save_checkpoint()
+                    self.save_model()
+                
                 episode_reward = 0.0
+                extrinsic_reward = 0.0
                 episode_steps = 0
                 agent_loss, forward_loss, inverse_loss = 0.0, 0.0, 0.0
                 entropy_term = 0.0
 
-                if episode_reward > best_score:
-                    print("Found better score: old = {}, new = {}".format(best_score, episode_reward))
-                    best_score = episode_reward
-                    self.save_model()
-
+        self.agent.save_checkpoint()
+        self.save_model()
         end_time = time.time()
         print("\nTraining complete. Time taken = {} secs".format(end_time - start_time))
         self.env.close()
