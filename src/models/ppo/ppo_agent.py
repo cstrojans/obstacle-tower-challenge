@@ -72,6 +72,7 @@ class MasterAgent():
         self.global_model(tf.convert_to_tensor(vec, dtype=tf.float32), training=True)
         self.ac_ckpt = tf.train.Checkpoint(model=self.global_model, step=tf.Variable(1))
         self.ac_manager = tf.train.CheckpointManager(self.ac_ckpt, directory='./checkpoints/model-ppo/ac_ckpts', max_to_keep=3)
+        self.restore_checkpoint()
 
     def save_checkpoint(self):
         self.ac_manager.save()
@@ -116,7 +117,8 @@ class MasterAgent():
             'log_timestamp': self.current_time,
             'action_size': self.action_size,
             'action_lookup': self._action_lookup,
-            'prev_n_steps': self.prev_n_steps
+            'prev_n_steps': self.prev_n_steps,
+            'save_checkpoint': self.save_checkpoint
         }
         workers = [Worker(res_queue,
                           worker_id,
@@ -127,6 +129,7 @@ class MasterAgent():
             print("Starting worker {}".format(i))
             worker.start()
 
+        self.save_checkpoint()
         # record episode reward to plot
         moving_average_rewards = []
         losses = []
@@ -225,12 +228,17 @@ class Worker(threading.Thread):
 
         self.action_size = params['action_size']
         self._action_lookup = params['action_lookup']
-        self.input_shape = self.env.observation_space[0].shape  # (84, 84, 3)
+        self.last_n_steps = params['prev_n_steps']
+        self.input_shape = list(self.env.observation_space[0].shape)  # (84, 84, 3)
+        self.input_shape[2] *= self.last_n_steps
+        self.input_shape = tuple(self.input_shape)
         self._last_health = 99999.
         self._last_keys = 0
 
         self.global_model = params['global_model']
         self.local_model = CNN(self.action_size, self.input_shape)
+        self.local_model(np.expand_dims(np.ones(self.input_shape), axis=0), training=True)
+        self.local_model.set_weights(self.global_model.get_weights())
         # self.local_model = CnnGru(self.action_size, self.input_shape)
         
         self.current_time = params['log_timestamp']
@@ -242,23 +250,9 @@ class Worker(threading.Thread):
         self.gamma = params['gamma']
         self.lr = params['lr']
         self.opt = params['optimizer']
-        self.last_n_steps = params['prev_n_steps']
+        self.save_checkpoint = params['save_checkpoint']
+        
         self.eps = np.finfo(np.float32).eps.item()
-        self.ac_ckpt = tf.train.Checkpoint(model=self.global_model, step=tf.Variable(1))
-        self.ac_manager = tf.train.CheckpointManager(self.ac_ckpt, directory='./checkpoints/model-ppo/ac_ckpts', max_to_keep=3)
-
-    def save_checkpoint(self):
-        self.ac_manager.save()
-
-        print("Saved checkpoint for step {}".format(int(self.ac_ckpt.step)))
-        self.ac_ckpt.step.assign_add(1)
-
-    def restore_checkpoint(self):
-        if self.ac_manager.latest_checkpoint:
-            self.ac_ckpt.restore(self.ac_manager.latest_checkpoint)
-            print("Restored from {}".format(self.ac_manager.latest_checkpoint))
-        else:
-            print("Initializing from scratch.")
 
     def get_updated_reward(self, reward, new_health, new_keys, done):
         new_health = float(new_health)
@@ -390,6 +384,7 @@ class Worker(threading.Thread):
                     with Worker.save_lock:
                         print('\nSaving best model to: {}, episode score: {}\n'.format(self.model_path, ep_reward))
                         keras.models.save_model(self.global_model, self.model_path)
+                        self.save_checkpoint()
                         Worker.best_score = ep_reward
                 
                 entropy_term = 0
