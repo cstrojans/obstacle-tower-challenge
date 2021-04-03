@@ -13,7 +13,7 @@ import tensorboard
 from tensorflow import keras
 import threading
 import time
-
+from collections import deque
 from models.ppo.cnn import CNN
 from models.ppo.gru import CnnGru
 from models.common.util import ActionSpace, Memory_PPO
@@ -28,7 +28,7 @@ class MasterAgent():
     """MasterAgent A3C: Asynchronous Advantage Actor Critic Model is a model-free policy gradient algorithm.
     """
 
-    def __init__(self, env_path, train, evaluate, lr, timesteps, batch_size, gamma, num_workers, save_dir, eval_seeds=[]):
+    def __init__(self, env_path, train, evaluate, lr, timesteps, batch_size, gamma, num_workers, save_dir, prev_n_steps = 3, eval_seeds=[]):
         self.save_dir = save_dir
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
@@ -44,11 +44,12 @@ class MasterAgent():
             5: np.asarray([1, 1, 0, 0]),  # forward + cam left
             6: np.asarray([1, 2, 0, 0]),  # forward + cam right
         }
-
+        self.prev_n_steps = prev_n_steps # for last n timesteps in model
         self.num_workers = multiprocessing.cpu_count() if num_workers == 0 else num_workers
         self.env = instantiate_environment(env_path, train, evaluate, eval_seeds)
-        self.input_shape = self.env.observation_space[0].shape  # (84, 84, 3)
-
+        self.input_shape = list(self.env.observation_space[0].shape)  # (84, 84, 3)
+        self.input_shape[2] *= self.prev_n_steps
+        self.input_shape = tuple(self.input_shape)
         # model parameters
         self.lr = lr
         self.timesteps = timesteps
@@ -56,8 +57,8 @@ class MasterAgent():
         self.gamma = gamma
         self.model_path = os.path.join(self.save_dir, 'model_a3c')
         
-        # self.global_model = CNN(self.action_size, self.input_shape)
-        self.global_model = CnnGru(self.action_size, self.input_shape)
+        self.global_model = CNN(self.action_size, self.input_shape)
+        # self.global_model = CnnGru(self.action_size, self.input_shape)
 
         self.current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         train_log_dir = './logs/' + self.current_time + '/a3c/master'
@@ -69,6 +70,21 @@ class MasterAgent():
         vec = np.random.random(self.input_shape)  # (84, 84, 3)
         vec = np.expand_dims(vec, axis=0)  # (1, 84, 84, 3)
         self.global_model(tf.convert_to_tensor(vec, dtype=tf.float32), training=True)
+        self.ac_ckpt = tf.train.Checkpoint(model=self.global_model, step=tf.Variable(1))
+        self.ac_manager = tf.train.CheckpointManager(self.ac_ckpt, directory='./checkpoints/model-ppo/ac_ckpts', max_to_keep=3)
+
+    def save_checkpoint(self):
+        self.ac_manager.save()
+
+        print("Saved checkpoint for step {}".format(int(self.ac_ckpt.step)))
+        self.ac_ckpt.step.assign_add(1)
+
+    def restore_checkpoint(self):
+        if self.ac_manager.latest_checkpoint:
+            self.ac_ckpt.restore(self.ac_manager.latest_checkpoint)
+            print("Restored from {}".format(self.ac_manager.latest_checkpoint))
+        else:
+            print("Initializing from scratch.")
 
     def build_graph(self):
         """ build the model architecture """
@@ -99,7 +115,8 @@ class MasterAgent():
             'master_summary_writer': self.master_summary_writer,
             'log_timestamp': self.current_time,
             'action_size': self.action_size,
-            'action_lookup': self._action_lookup
+            'action_lookup': self._action_lookup,
+            'prev_n_steps': self.prev_n_steps
         }
         workers = [Worker(res_queue,
                           worker_id,
@@ -213,8 +230,8 @@ class Worker(threading.Thread):
         self._last_keys = 0
 
         self.global_model = params['global_model']
-        # self.local_model = CNN(self.action_size, self.input_shape)
-        self.local_model = CnnGru(self.action_size, self.input_shape)
+        self.local_model = CNN(self.action_size, self.input_shape)
+        # self.local_model = CnnGru(self.action_size, self.input_shape)
         
         self.current_time = params['log_timestamp']
         train_log_dir = './logs/' + self.current_time + '/worker_' + str(self.worker_idx)
@@ -225,7 +242,23 @@ class Worker(threading.Thread):
         self.gamma = params['gamma']
         self.lr = params['lr']
         self.opt = params['optimizer']
+        self.last_n_steps = params['prev_n_steps']
         self.eps = np.finfo(np.float32).eps.item()
+        self.ac_ckpt = tf.train.Checkpoint(model=self.global_model, step=tf.Variable(1))
+        self.ac_manager = tf.train.CheckpointManager(self.ac_ckpt, directory='./checkpoints/model-ppo/ac_ckpts', max_to_keep=3)
+
+    def save_checkpoint(self):
+        self.ac_manager.save()
+
+        print("Saved checkpoint for step {}".format(int(self.ac_ckpt.step)))
+        self.ac_ckpt.step.assign_add(1)
+
+    def restore_checkpoint(self):
+        if self.ac_manager.latest_checkpoint:
+            self.ac_ckpt.restore(self.ac_manager.latest_checkpoint)
+            print("Restored from {}".format(self.ac_manager.latest_checkpoint))
+        else:
+            print("Initializing from scratch.")
 
     def get_updated_reward(self, reward, new_health, new_keys, done):
         new_health = float(new_health)
@@ -257,7 +290,7 @@ class Worker(threading.Thread):
     def run(self):
         horizon = 512
         batch_size = horizon // 16
-        n_epochs = 24
+        n_epochs = 5
         mem = Memory_PPO(batch_size=batch_size)
         n_steps = 0
         rewards = []
@@ -271,26 +304,39 @@ class Worker(threading.Thread):
         done = False
         obs = self.env.reset()
         state, new_keys, new_health, cur_floor = obs
-
+        
         while timestep <= self.timesteps:
+            # Getting last n observations
+            i = 1
+            state_arr = deque([state])
+            while i < self.last_n_steps:
+                # pick a random action, stack it with the state
+                action_index = np.random.choice(self.action_size)
+                action = self._action_lookup[action_index]
+
+                obs, reward, done, _ = self.env.step(action)
+                state, new_keys, new_health, cur_floor = obs
+
+                state_arr.append(state)
+                i += 1
+            state = np.dstack(state_arr)
             for i in range(self.batch_size):
                 # collect experience
                 # get action as per policy
                 state = tf.convert_to_tensor(state)
                 state = tf.expand_dims(state, axis=0)
                 action_probs, critic_value = self.local_model(state, training=True)
-
-                # entropy = -np.sum(action_probs * np.log(action_probs))
-                # entropy_term += entropy
-
+                
                 # choose most probable action
                 action_index = np.random.choice(
                 self.action_size, p=np.squeeze(action_probs))
                 action = self._action_lookup[action_index]
-
+                
                 # perform action in game env
                 for i in range(4): # frame skipping
                     obs, reward, done, _ = self.env.step(action)
+                    if done:
+                        break
                     state, new_keys, new_health, cur_floor = obs
                     
                     reward = self.get_updated_reward(reward, new_health, new_keys, done)
@@ -300,6 +346,12 @@ class Worker(threading.Thread):
                     ep_reward += reward
                     ep_steps += 1
                     timestep += 1
+                
+                # Append to state array
+                state_arr.append(state)
+                state_arr.popleft()
+                state = np.dstack(state_arr)
+                
                 n_steps += 1
                 # store experience
                 mem.store(state=state,
@@ -349,7 +401,7 @@ class Worker(threading.Thread):
         self.env.close()
     
     def run_training(self, memory, gamma, eps, loss_fn, n_epochs, batch_size):
-        n_epochs = 3
+        n_epochs = 5
         clipping_val = 0.2
         critic_discount = 0.5
         entropy_beta = 0.01
