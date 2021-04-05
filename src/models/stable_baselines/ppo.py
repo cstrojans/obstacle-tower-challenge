@@ -3,7 +3,7 @@ import os
 import time
 from obstacle_tower_env import ObstacleTowerEnv, ObstacleTowerEvaluation
 from models.common.constants import train_env_reset_config, eval_env_reset_config
-from models.common.util import instantiate_environment
+from models.common.util import ActionSpace
 from stable_baselines3 import PPO
 from stable_baselines3.common.evaluation import evaluate_policy
 
@@ -38,13 +38,15 @@ class StablePPO():
         model.tensorboard_log = self.log_dir
         return model
 
-    def train(self, timesteps=10000, continue_training=True):
+    def train(self, timesteps=10000, continue_training=False):
         start_time = time.time()
-        if continue_training:
+        if not continue_training:
+            print("Initializing from scratch")
             model = PPO(self.policy_name, self.env, verbose=1,
                         tensorboard_log=self.log_dir)
         else:
             model = self.load_model()
+            print("Restored from {}".format(self.model_path))
 
         model.learn(total_timesteps=timesteps)
         print('\nTraining complete. Time taken = {} secs'.format(time.time() - start_time))
@@ -52,19 +54,20 @@ class StablePPO():
 
     def play_single_episode(self):
         """ have the trained agent play a single game """
-        model = self.load_model()
-
-        print("Playing single episode...")
+        action_space = ActionSpace()
         done = False
         reward_sum = 0
         step_counter = 0
+
+        model = self.load_model()
         obs = self.env.reset()
         try:
+            print("Playing single episode...")
             while not done:
                 action, _states = model.predict(obs)
                 obs, reward, done, info = self.env.step(action)
                 print("{}. Reward: {}, action: {}".format(
-                    step_counter, reward_sum, action))
+                    step_counter, reward_sum, action_space.get_full_action_meaning(action)))
                 self.env.render()
                 step_counter += 1
                 reward_sum += reward
