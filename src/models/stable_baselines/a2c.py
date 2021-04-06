@@ -5,6 +5,7 @@ from obstacle_tower_env import ObstacleTowerEnv, ObstacleTowerEvaluation
 from models.common.constants import train_env_reset_config, eval_env_reset_config
 from models.common.util import ActionSpace
 from stable_baselines3 import A2C
+from stable_baselines3.common.sb2_compat.rmsprop_tf_like import RMSpropTFLike
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.evaluation import evaluate_policy
 
@@ -43,8 +44,11 @@ class StableA2C():
         start_time = time.time()
         if not continue_training:
             print("Initializing from scratch")
+            policy_kwargs = {
+                "optimizer_class": RMSpropTFLike
+            }
             model = A2C(self.policy_name, self.env, verbose=1,
-                        tensorboard_log=self.log_dir)
+                        tensorboard_log=self.log_dir, policy_kwargs=policy_kwargs)
         else:
             model = self.load_model()
             print("Restored from {}".format(self.model_path))

@@ -1,0 +1,10 @@
+{
+  "ExpandedNodes": [
+    "",
+    "\\src",
+    "\\src\\models",
+    "\\src\\models\\stable_baselines"
+  ],
+  "SelectedNode": "\\src\\models\\stable_baselines\\a2c.py",
+  "PreviewInSolutionExplorer": false
+}
