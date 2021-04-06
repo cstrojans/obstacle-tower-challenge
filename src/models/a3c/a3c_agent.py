@@ -9,6 +9,7 @@ import os
 from prettyprinter import pprint
 from queue import Queue
 import tensorflow as tf
+import tensorflow_probability as tfp
 import tensorboard
 from tensorflow import keras
 import threading
@@ -34,15 +35,16 @@ class MasterAgent():
             os.makedirs(save_dir)
 
         self.env_path = env_path
-        self.action_size = 7
+        self.action_size = 8
         self._action_lookup = {  # action space from fourth place winner
-            0: np.asarray([1, 0, 0, 0]),  # forward
-            1: np.asarray([2, 0, 0, 0]),  # backward
-            2: np.asarray([0, 1, 0, 0]),  # cam left
-            3: np.asarray([0, 2, 0, 0]),  # cam right
-            4: np.asarray([1, 0, 1, 0]),  # forward + jump
-            5: np.asarray([1, 1, 0, 0]),  # forward + cam left
-            6: np.asarray([1, 2, 0, 0]),  # forward + cam right
+            0: np.asarray([0, 0, 0, 0]),  # no-op
+            1: np.asarray([1, 0, 0, 0]),  # forward
+            2: np.asarray([2, 0, 0, 0]),  # backward
+            3: np.asarray([0, 1, 0, 0]),  # cam left
+            4: np.asarray([0, 2, 0, 0]),  # cam right
+            5: np.asarray([1, 0, 1, 0]),  # forward + jump
+            6: np.asarray([1, 1, 0, 0]),  # forward + cam left
+            7: np.asarray([1, 2, 0, 0]),  # forward + cam right
         }
 
         self.num_workers = multiprocessing.cpu_count() if num_workers == 0 else num_workers
@@ -63,8 +65,8 @@ class MasterAgent():
         train_log_dir = './logs/' + self.current_time + '/a3c/master'
         self.master_summary_writer = tf.summary.create_file_writer(train_log_dir)
 
-        lr_schedule = keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=self.lr, decay_steps=1000, decay_rate=0.9)
-        self.opt = keras.optimizers.Adam(learning_rate=lr_schedule, epsilon=1e-05)
+        lr_schedule = keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=self.lr, decay_steps=10000, decay_rate=0.9)
+        self.opt = keras.optimizers.Adam(learning_rate=lr_schedule, epsilon=1e-04)
 
         vec = np.random.random(self.input_shape)  # (84, 84, 3)
         vec = np.expand_dims(vec, axis=0)  # (1, 84, 84, 3)
@@ -80,8 +82,9 @@ class MasterAgent():
 
     def log_master_metrics(self, avg_reward, loss, step):
         with self.master_summary_writer.as_default():
-            tf.summary.scalar('moving_average_reward', avg_reward, step=step)
-            tf.summary.scalar('loss', loss, step=step)
+            with tf.name_scope('master'):
+                tf.summary.scalar('mean_reward', avg_reward, step=step)
+                tf.summary.scalar('loss', loss, step=step)
             self.master_summary_writer.flush()
 
     def train(self):
@@ -111,7 +114,7 @@ class MasterAgent():
             worker.start()
 
         # record episode reward to plot
-        moving_average_rewards = []
+        mean_rewards = []
         losses = []
         i = 0
         while True:
@@ -125,7 +128,7 @@ class MasterAgent():
                 break
             else:
                 self.log_master_metrics(reward, loss, i)
-                moving_average_rewards.append(reward)
+                mean_rewards.append(reward)
                 losses.append(loss)
         
         for w in workers:
@@ -191,7 +194,7 @@ class MasterAgent():
 
 class Worker(threading.Thread):
     episode_count = 0
-    running_reward = 0
+    mean_reward = 0
     best_score = 0
     global_steps = 0
     save_lock = threading.Lock()
@@ -229,29 +232,29 @@ class Worker(threading.Thread):
 
     def get_updated_reward(self, reward, new_health, new_keys, done):
         new_health = float(new_health)
-        if done:  # penalize when game is terminated
+        if done:  # reset params when game is terminated
             self._last_health = 99999.
             self._last_keys = 0
-            reward = -1
         else:
-            # crossing a floor- between [1, 4]
+            # crossing a floor - between [1, 4]
             if reward >= 1:
                 reward += (new_health / 10000)
             
             # found time orb / crossed a floor
             if new_health > self._last_health:
-                reward += 0.1
+                reward += 0.5
 
             # found a key
             if new_keys > self._last_keys:
-                reward += 0.1
+                reward += 0.5
 
         return reward
 
     def log_worker_metrics(self, episode_reward, loss, step):
         with self.worker_summary_writer.as_default():
-            tf.summary.scalar('reward', episode_reward, step=step)
-            tf.summary.scalar('loss', loss, step=step)
+            with tf.name_scope('worker'):
+                tf.summary.scalar('reward', episode_reward, step=step)
+                tf.summary.scalar('loss', loss, step=step)
             self.worker_summary_writer.flush()
 
     def run(self):
@@ -269,8 +272,9 @@ class Worker(threading.Thread):
         state, _, _, _ = obs
 
         while timestep <= self.timesteps:
+            i = 0
             with tf.GradientTape() as tape:
-                for i in range(self.batch_size):
+                while i < self.batch_size:
                     # collect experience
                     # get action as per policy
                     state = tf.convert_to_tensor(state)
@@ -281,25 +285,24 @@ class Worker(threading.Thread):
                     entropy_term += entropy
 
                     # choose most probable action
-                    action_index = np.random.choice(
-                        self.action_size, p=np.squeeze(action_probs))
+                    dist = tfp.distributions.Categorical(probs=action_probs, dtype=tf.float32)
+                    action_index = int(dist.sample().numpy())
                     action = self._action_lookup[action_index]
 
                     # perform action in game env
                     for i in range(4): # frame skipping
                         obs, reward, done, _ = self.env.step(action)
                         state, new_keys, new_health, cur_floor = obs
-                        
                         reward = self.get_updated_reward(reward, new_health, new_keys, done)
                         self._last_health = new_health
                         self._last_keys = new_keys
-                        
                         ep_reward += reward
                         ep_steps += 1
+                        i += 1
                         timestep += 1
 
                     # store experience
-                    mem.store(action_prob=action_probs[0, action_index],
+                    mem.store(action_prob=tf.math.log(action_probs[0, action_index]),
                               value=critic_value[0, 0],
                               reward=reward)
 
@@ -318,12 +321,12 @@ class Worker(threading.Thread):
             
             if done:
                 rewards.append(ep_reward)
-                Worker.running_reward = sum(rewards[-10:]) / 10
+                Worker.mean_reward = sum(rewards) / len(rewards)
 
                 self.log_worker_metrics(ep_reward, ep_loss, ep_count)
-                print("Episode: {} | Average Reward: {:.3f} | Episode Reward: {:.3f} | Loss: {:.3f} | Steps: {} | Total Steps: {} | Worker: {}".format(
-                    Worker.episode_count, Worker.running_reward, ep_reward, ep_loss, ep_steps, Worker.global_steps, self.worker_idx))
-                self.result_queue.put((Worker.running_reward, total_loss))
+                print("Episode: {} | Mean Reward: {:.3f} | Episode Reward: {:.3f} | Loss: {:.3f} | Steps: {} | Total Steps: {} | Worker: {}".format(
+                    Worker.episode_count, Worker.mean_reward, ep_reward, ep_loss, ep_steps, Worker.global_steps, self.worker_idx))
+                self.result_queue.put((Worker.mean_reward, total_loss))
                 Worker.episode_count += 1
                 ep_count += 1
 
