@@ -26,6 +26,9 @@ if __name__ == '__main__':
         from models.a3c.a3c_agent import MasterAgent
         agent = MasterAgent(env_path=args.env, train=False, evaluate=args.evaluate, eval_seeds=eval_seeds, lr=0.0,
                             timesteps=0, batch_size=0, gamma=0, num_workers=1, save_dir=args.save_dir)
+    elif args.algorithm == 'a3c_distributed':
+        from models.distributed_tf.distributed_agent import DistributedMasterAgent
+        agent = DistributedMasterAgent(env_path=args.env, train=False, evaluate=args.evaluate, lr=0.0, timesteps=0, batch_size=0, gamma=0, save_dir=args.save_dir, plot=False)
     elif args.algorithm == 'curiosity':
         from models.curiosity.curiosity_agent import CuriosityAgent
         agent = CuriosityAgent(env_path=args.env, train=False, evaluate=args.evaluate,

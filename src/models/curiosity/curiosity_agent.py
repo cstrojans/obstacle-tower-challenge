@@ -41,8 +41,8 @@ class CuriosityAgent():
         self.model_path = os.path.join(self.save_dir, 'model_curiosity')
         self.lr = lr
         self.gamma = gamma
-        self.lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=self.lr, decay_steps=1000, decay_rate=0.9)
-        self.opt = tf.keras.optimizers.Adam(learning_rate=self.lr_schedule, epsilon=1e-05)
+        self.lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=self.lr, decay_steps=10000, decay_rate=0.9)
+        self.opt = tf.keras.optimizers.Adam(learning_rate=self.lr_schedule, epsilon=1e-04)
         self.eps = np.finfo(np.float32).eps.item()  # smallest number such that 1.0 + eps != 1.0
         self._last_health = 99999.
         self._last_keys = 0
@@ -100,6 +100,28 @@ class CuriosityAgent():
         self.opt.apply_gradients(zip(fm_grads, self.agent.forward_model.trainable_variables))
         self.opt.apply_gradients(zip(im_grads, self.agent.inverse_model.trainable_variables))
     
+    
+    def get_updated_reward(self, reward, new_health, new_keys, done):
+        new_health = float(new_health)
+        if done:  # penalize when game is terminated
+            self._last_health = 99999.
+            self._last_keys = 0
+            reward = -1
+        else:
+            # crossing a floor- between [1, 4]
+            if reward >= 1:
+                reward += (new_health / 10000)
+            
+            # found time orb / crossed a floor
+            if new_health > self._last_health:
+                reward += 0.1
+
+            # found a key
+            if new_keys > self._last_keys:
+                reward += 0.1
+
+        return reward
+
     def train(self):
         """ train the model """
         start_time = time.time()
@@ -144,6 +166,9 @@ class CuriosityAgent():
                     # perform action in game env
                     obs, reward, done, _ = self.env.step(action)
                     new_state, new_keys, new_health, cur_floor = obs
+                    reward = self.get_updated_reward(reward, new_health, new_keys, done)
+                    self._last_health = new_health
+                    self._last_keys = new_keys
                     
                     intrinsic_reward, state_features, new_state_features = self.agent.icm_act(state, new_state, action_one_hot, training=True)
                     total_reward = self.ext_coeff * reward + self.int_coeff * intrinsic_reward

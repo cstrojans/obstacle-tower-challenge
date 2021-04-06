@@ -51,7 +51,7 @@ if __name__ == '__main__':
         if args.distributed_train:
             from models.distributed_tf.distributed_agent import DistributedMasterAgent
             master = DistributedMasterAgent(env_path=args.env, train=True, evaluate=False, lr=args.lr, timesteps=args.timesteps,
-                                            batch_size=args.batch_size, gamma=args.gamma, save_dir=args.save_dir, plot=args.plot)
+                                batch_size=args.batch_size, gamma=args.gamma, save_dir=args.save_dir, plot=args.plot)
             # master.build_graph().summary()
             master.distributed_train()
         else:

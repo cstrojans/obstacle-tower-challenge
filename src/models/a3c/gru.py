@@ -47,7 +47,7 @@ class CnnGru(keras.Model):
                                 )
 
         # RNN - temporal dependencies
-        self.gru = layers.LSTM(256)
+        self.gru = layers.GRU(256)
 
         # policy output layer (Actor)
         self.policy_logits = layers.Dense(units=self.action_size, activation=tf.nn.softmax, name='policy_logits')
