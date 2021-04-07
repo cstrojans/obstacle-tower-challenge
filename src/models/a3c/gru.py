@@ -93,10 +93,7 @@ class CnnGru(keras.Model):
         if done:  # game has terminated
             discounted_reward_sum = 0.
         else:  # bootstrap starting reward from last state
-            last_state = tf.convert_to_tensor(last_state)
-            last_state = tf.expand_dims(last_state, axis=0)
-            _, critic_value = self.call(last_state)
-            discounted_reward_sum = critic_value[0, 0]
+            discounted_reward_sum = memory.critic_value_history[-1]
 
         returns = []
         for reward in memory.rewards_history[::-1]:  # reverse buffer r
@@ -108,19 +105,15 @@ class CnnGru(keras.Model):
     def compute_loss(self, memory, last_state, done, gamma, eps, entropy):
         """ calculate actor and critic loss """
         value_coeff = 0.5
-        entropy_coeff = 0.05
+        entropy_coeff = 0.01
         returns = self.get_returns(memory, last_state, done, gamma, eps)
-        actor_loss, critic_loss = 0.0, 0.0
 
         # advantage: 
         # how much better it is to take a specific action compared to 
         # the average, general action at the given state.
-        advantage = tf.subtract(returns, memory.critic_value_history)
-        actor_loss = tf.math.reduce_mean(advantage * memory.action_probs_history)
-        # print(actor_loss)
-        mse = tf.keras.losses.MeanSquaredError()
-        # huber_loss = tf.keras.losses.Huber()
-        critic_loss = mse(memory.critic_value_history, returns).numpy()
+        advantage = tf.math.subtract(returns, memory.critic_value_history)
+        actor_loss = tf.math.reduce_mean(tf.stop_gradient(advantage) * memory.action_probs_history)
+        critic_loss = tf.keras.losses.MSE(returns, memory.critic_value_history).numpy()
 
         total_loss = actor_loss + value_coeff * critic_loss + entropy_coeff * entropy        
         return -total_loss  # negate it to perform gradient ascent

@@ -61,6 +61,10 @@ class MasterAgent():
         # self.global_model = CNN(self.action_size, self.input_shape)
         self.global_model = CnnGru(self.action_size, self.input_shape)
 
+        # checkpointing
+        self.ac_ckpt = tf.train.Checkpoint(model=self.global_model, step=tf.Variable(1))
+        self.ac_manager = tf.train.CheckpointManager(self.ac_ckpt, directory='./checkpoints/model-a3c/ckpts', max_to_keep=3)
+
         self.current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         train_log_dir = './logs/' + self.current_time + '/a3c/master'
         self.master_summary_writer = tf.summary.create_file_writer(train_log_dir)
@@ -68,6 +72,11 @@ class MasterAgent():
         lr_schedule = keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=self.lr, decay_steps=10000, decay_rate=0.9)
         self.opt = keras.optimizers.Adam(learning_rate=lr_schedule, epsilon=1e-04)
 
+        if self.ac_manager.latest_checkpoint:
+            self.ac_ckpt.restore(self.ac_manager.latest_checkpoint)
+            print("Restored from {}".format(self.ac_manager.latest_checkpoint))
+        else:
+            print("Initializing from scratch.")
         vec = np.random.random(self.input_shape)  # (84, 84, 3)
         vec = np.expand_dims(vec, axis=0)  # (1, 84, 84, 3)
         self.global_model(tf.convert_to_tensor(vec, dtype=tf.float32), training=True)
@@ -99,6 +108,8 @@ class MasterAgent():
             'lr': self.lr,
             'optimizer': self.opt,
             'global_model': self.global_model,
+            'ckpt': self.ac_ckpt,
+            'ckpt_mgr': self.ac_manager,
             'master_summary_writer': self.master_summary_writer,
             'log_timestamp': self.current_time,
             'action_size': self.action_size,
@@ -139,8 +150,12 @@ class MasterAgent():
             end_time - start_time))
 
         # save the trained model to a file
-        # print('Saving global model to: {}'.format(self.model_path))
-        # keras.models.save_model(self.global_model, self.model_path)
+        self.ac_manager.save()
+        print("Saved checkpoint for step {}".format(int(self.ac_ckpt.step)))
+        self.ac_ckpt.step.assign_add(1)
+
+        keras.models.save_model(self.global_model, self.model_path)
+        print('Saved global model to: {}'.format(self.model_path))
 
         self.env.close()
 
@@ -219,6 +234,9 @@ class Worker(threading.Thread):
         # self.local_model = CNN(self.action_size, self.input_shape)
         self.local_model = CnnGru(self.action_size, self.input_shape)
         
+        self.ac_ckpt = params['ckpt']
+        self.ac_manager = params['ckpt_mgr']
+        
         self.current_time = params['log_timestamp']
         train_log_dir = './logs/' + self.current_time + '/worker_' + str(self.worker_idx)
         self.worker_summary_writer = tf.summary.create_file_writer(train_log_dir)
@@ -232,23 +250,28 @@ class Worker(threading.Thread):
 
     def get_updated_reward(self, reward, new_health, new_keys, done):
         new_health = float(new_health)
+        new_reward = 0.0
         if done:  # reset params when game is terminated
             self._last_health = 99999.
             self._last_keys = 0
         else:
+            # opened a door, solved a puzzle, picked up a key
+            if reward >= 0.1:
+                new_reward += 0.5
+            
             # crossing a floor - between [1, 4]
             if reward >= 1:
-                reward += (new_health / 10000)
+                new_reward += (new_health / 10000)
             
             # found time orb / crossed a floor
             if new_health > self._last_health:
-                reward += 0.5
+                new_reward += 0.5
 
-            # found a key
+            # picked up a key
             if new_keys > self._last_keys:
-                reward += 0.5
+                new_reward += 0.5
 
-        return reward
+        return new_reward
 
     def log_worker_metrics(self, episode_reward, loss, step):
         with self.worker_summary_writer.as_default():
@@ -259,14 +282,13 @@ class Worker(threading.Thread):
 
     def run(self):
         mem = Memory()
-        rewards = []
-        ep_count = 1
+        ep_count = 0
         timestep = 0
         entropy_term = 0
         ep_reward = 0.
         ep_steps = 0
         ep_loss = 0.
-
+        
         done = False
         obs = self.env.reset()
         state, _, _, _ = obs
@@ -320,8 +342,7 @@ class Worker(threading.Thread):
             mem.clear()
             
             if done:
-                rewards.append(ep_reward)
-                Worker.mean_reward = sum(rewards) / len(rewards)
+                Worker.mean_reward = (Worker.mean_reward * Worker.episode_count + ep_reward) / (Worker.episode_count + 1)
 
                 self.log_worker_metrics(ep_reward, ep_loss, ep_count)
                 print("Episode: {} | Mean Reward: {:.3f} | Episode Reward: {:.3f} | Loss: {:.3f} | Steps: {} | Total Steps: {} | Worker: {}".format(
@@ -336,8 +357,12 @@ class Worker(threading.Thread):
                 # use a lock to save local model and to print to prevent data races.
                 if ep_reward > Worker.best_score:
                     with Worker.save_lock:
-                        print('\nSaving best model to: {}, episode score: {}\n'.format(self.model_path, ep_reward))
+                        self.ac_manager.save()
+                        print("Saved checkpoint for step {}".format(int(self.ac_ckpt.step)))
+                        self.ac_ckpt.step.assign_add(1)
+
                         keras.models.save_model(self.global_model, self.model_path)
+                        print('\nSaved best model to: {}, episode score: {}\n'.format(self.model_path, ep_reward))
                         Worker.best_score = ep_reward
                 
                 entropy_term = 0
