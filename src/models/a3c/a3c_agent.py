@@ -79,14 +79,15 @@ class MasterAgent():
             print("Initializing from scratch.")
         vec = np.random.random(self.input_shape)  # (84, 84, 3)
         vec = np.expand_dims(vec, axis=0)  # (1, 84, 84, 3)
-        self.global_model(tf.convert_to_tensor(vec, dtype=tf.float32), training=True)
+        self.global_model([tf.convert_to_tensor(vec, dtype=tf.float32), 3000.0], training=True)
 
     def build_graph(self):
         """ build the model architecture """
-        x = keras.Input(shape=(84, 84, 3))
-        model = keras.Model(inputs=[x], outputs=self.global_model.call(x))
+        state = keras.Input(shape=(84, 84, 3))
+        rem_time = keras.Input((1,))
+        model = keras.Model(inputs=[state, rem_time], outputs=self.global_model.call([state, 3000.0]))
         keras.utils.plot_model(model, to_file=os.path.join(
-            self.save_dir, 'model_a3c_architecture.png'), dpi=96, show_shapes=True, show_layer_names=True, expand_nested=False)
+            self.save_dir, 'model_a3c_architecture.png'), dpi=96, show_shapes=True, show_layer_names=True, expand_nested=True)
         return model
 
     def log_master_metrics(self, avg_reward, loss, step):
@@ -169,18 +170,19 @@ class MasterAgent():
         step_counter = 0
         reward_sum = 0
         obs = self.env.reset()
-        state, _, _, _ = obs
+        state, keys, health, floor = obs
 
         try:
             while not done:
-                policy, _ = model(tf.convert_to_tensor(
-                    np.expand_dims(state, axis=0), dtype=tf.float32))
+                state = tf.convert_to_tensor(state)
+                state = tf.expand_dims(state, axis=0)
+                policy, _ = model([state, float(health)])
                 action_index = np.random.choice(self.action_size, p=np.squeeze(policy))
                 action = self._action_lookup[action_index]
 
                 for i in range(4): # frame skipping
                     obs, reward, done, _ = self.env.step(action)
-                    state, _, _, _ = obs
+                    state, keys, health, floor = obs
                     reward_sum += reward
                     step_counter += 1
                 
@@ -256,7 +258,7 @@ class Worker(threading.Thread):
             self._last_keys = 0
         else:
             # opened a door, solved a puzzle, picked up a key
-            if reward >= 0.1:
+            if 0.1 <= reward < 1:
                 new_reward += 0.5
             
             # crossing a floor - between [1, 4]
@@ -265,10 +267,6 @@ class Worker(threading.Thread):
             
             # found time orb / crossed a floor
             if new_health > self._last_health:
-                new_reward += 0.5
-
-            # picked up a key
-            if new_keys > self._last_keys:
                 new_reward += 0.5
 
         return new_reward
@@ -291,7 +289,7 @@ class Worker(threading.Thread):
         
         done = False
         obs = self.env.reset()
-        state, _, _, _ = obs
+        state, self._last_keys, self._last_health, _ = obs
 
         while timestep <= self.timesteps:
             i = 0
@@ -301,7 +299,7 @@ class Worker(threading.Thread):
                     # get action as per policy
                     state = tf.convert_to_tensor(state)
                     state = tf.expand_dims(state, axis=0)
-                    action_probs, critic_value = self.local_model(state, training=True)
+                    action_probs, critic_value = self.local_model([state, float(self._last_health)], training=True)
 
                     entropy = -np.sum(action_probs * np.log(action_probs))
                     entropy_term += entropy
