@@ -21,7 +21,7 @@ class CnnGru(keras.Model):
                                    input_shape=self.ip_shape
                                    )
         self.bn1 = layers.BatchNormalization()
-        # self.pool1 = layers.MaxPool2D(pool_size=(2, 2))
+        self.pool1 = layers.MaxPool2D(pool_size=(2, 2))
 
         # (9, 9, 64)
         self.conv2 = layers.Conv2D(filters=64,
@@ -31,16 +31,16 @@ class CnnGru(keras.Model):
                                    data_format='channels_last'
                                    )
         self.bn2 = layers.BatchNormalization()
-        # self.pool2 = layers.MaxPool2D(pool_size=(2, 2))
+        self.pool2 = layers.MaxPool2D(pool_size=(2, 2))
 
         # (7, 7, 64)
-        self.conv3 = layers.Conv2D(filters=64,
-                                   kernel_size=(3, 3),
-                                   strides=(1, 1),
-                                   activation=tf.keras.activations.relu,
-                                   data_format='channels_last'
-                                   )
-        self.bn3 = layers.BatchNormalization()
+        # self.conv3 = layers.Conv2D(filters=64,
+        #                            kernel_size=(3, 3),
+        #                            strides=(1, 1),
+        #                            activation=tf.keras.activations.relu,
+        #                            data_format='channels_last'
+        #                            )
+        # self.bn3 = layers.BatchNormalization()
 
         # reshape
         self.flatten = layers.Flatten()
@@ -66,12 +66,12 @@ class CnnGru(keras.Model):
         
         x = self.conv1(state)
         x = self.bn1(x, training=training)
-        # x = self.pool1(x)
+        x = self.pool1(x)
         x = self.conv2(x)
         x = self.bn2(x, training=training)
-        # x = self.pool2(x)
-        x = self.conv3(x)
-        x = self.bn3(x, training=training)
+        x = self.pool2(x)
+        # x = self.conv3(x)
+        # x = self.bn3(x, training=training)
 
         x = self.flatten(x)  # (1, 3136)
         x = tf.concat([x, rem_time], axis=1)  # (1, 3137)
