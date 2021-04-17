@@ -7,6 +7,7 @@ import os
 from prettyprinter import pprint
 import tensorboard
 import tensorflow as tf
+import tensorflow_probability as tfp
 import time
 
 from models.curiosity.agent import TowerAgent
@@ -22,15 +23,16 @@ class CuriosityAgent():
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
 
-        self.action_size = 7
+        self.action_size = 8
         self._action_lookup = {
-            0: np.asarray([1, 0, 0, 0]),  # forward
-            1: np.asarray([2, 0, 0, 0]),  # backward
-            2: np.asarray([0, 1, 0, 0]),  # cam left
-            3: np.asarray([0, 2, 0, 0]),  # cam right
-            4: np.asarray([1, 0, 1, 0]),  # jump forward
-            5: np.asarray([1, 1, 0, 0]),  # forward + cam left
-            6: np.asarray([1, 2, 0, 0]),  # forward + cam right
+            0: np.asarray([0, 0, 0, 0]),  # no-op
+            1: np.asarray([1, 0, 0, 0]),  # forward
+            2: np.asarray([2, 0, 0, 0]),  # backward
+            3: np.asarray([0, 1, 0, 0]),  # cam left
+            4: np.asarray([0, 2, 0, 0]),  # cam right
+            5: np.asarray([1, 0, 1, 0]),  # forward + jump
+            6: np.asarray([1, 1, 0, 0]),  # forward + cam left
+            7: np.asarray([1, 2, 0, 0]),  # forward + cam right
         }
         self.env_path = env_path
         self.env = instantiate_environment(env_path, train, evaluate, eval_seeds)
@@ -46,6 +48,7 @@ class CuriosityAgent():
         self.eps = np.finfo(np.float32).eps.item()  # smallest number such that 1.0 + eps != 1.0
         self._last_health = 99999.
         self._last_keys = 0
+        self._last_floor = 0
         self.timesteps = timesteps
         self.batch_size = batch_size
         self.ext_coeff = 1
@@ -53,7 +56,7 @@ class CuriosityAgent():
 
         # logging
         self.current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        train_log_dir = './logs/' + self.current_time + '/curiosity'
+        train_log_dir = './logs/curiosity/' + self.current_time
         self.summary_writer = tf.summary.create_file_writer(train_log_dir)
 
     # def build_graph(self):
@@ -64,14 +67,16 @@ class CuriosityAgent():
     #         self.save_dir, 'model_curiosity_architecture.png'), dpi=96, show_shapes=True, show_layer_names=True, expand_nested=False)
     #     return model
 
-    def log_metrics(self, episode_reward, running_reward, ac_loss, forward_loss, inverse_loss, feature_extractor_loss, episode):
+    def log_metrics(self, episode_reward, mean_reward, floor, ac_loss, forward_loss, inverse_loss, icm_loss, episode):
         with self.summary_writer.as_default():
-            tf.summary.scalar('episode_reward', episode_reward, step=episode)
-            tf.summary.scalar('moving_average_reward', running_reward, step=episode)
-            tf.summary.scalar('actor_critic_loss', ac_loss, step=episode)
-            tf.summary.scalar('forward_model_loss', forward_loss, step=episode)
-            tf.summary.scalar('inverse_model_loss', inverse_loss, step=episode)
-            tf.summary.scalar('feature_extractor_loss', feature_extractor_loss, step=episode)
+            with tf.name_scope('curiosity'):
+                tf.summary.scalar('episode_reward', episode_reward, step=episode)
+                tf.summary.scalar('mean_reward', mean_reward, step=episode)
+                tf.summary.scalar('floor', floor, step=episode)
+                tf.summary.scalar('actor_critic_loss', ac_loss, step=episode)
+                tf.summary.scalar('forward_model_loss', forward_loss, step=episode)
+                tf.summary.scalar('inverse_model_loss', inverse_loss, step=episode)
+                tf.summary.scalar('icm_loss', icm_loss, step=episode)
             self.summary_writer.flush()
     
     def load_model(self):
@@ -88,10 +93,10 @@ class CuriosityAgent():
         tf.keras.models.save_model(self.agent.forward_model, os.path.join(self.model_path, 'fm_model'))
         tf.keras.models.save_model(self.agent.inverse_model, os.path.join(self.model_path, 'im_model'))
 
-    def update(self, tape, ac_loss, feature_extractor_loss, forward_loss, inverse_loss):
+    def update(self, tape, ac_loss, forward_loss, inverse_loss, icm_loss):
         """ calculate and apply gradients """
         ac_grads = tape.gradient(ac_loss, self.agent.actor_critic_model.trainable_variables)
-        fe_grads = tape.gradient(feature_extractor_loss, self.agent.feature_extractor.trainable_variables)
+        fe_grads = tape.gradient(icm_loss, self.agent.feature_extractor.trainable_variables)
         fm_grads = tape.gradient(forward_loss, self.agent.forward_model.trainable_variables)
         im_grads = tape.gradient(inverse_loss, self.agent.inverse_model.trainable_variables)
         
@@ -103,50 +108,45 @@ class CuriosityAgent():
     
     def get_updated_reward(self, reward, new_health, new_keys, done):
         new_health = float(new_health)
-        if done:  # penalize when game is terminated
-            self._last_health = 99999.
-            self._last_keys = 0
-            reward = -1
-        else:
-            # crossing a floor- between [1, 4]
-            if reward >= 1:
-                reward += (new_health / 10000)
-            
-            # found time orb / crossed a floor
-            if new_health > self._last_health:
-                reward += 0.1
-
-            # found a key
-            if new_keys > self._last_keys:
-                reward += 0.1
-
-        return reward
+        new_reward = 0.0
+        # opened a door, solved a puzzle, picked up a key
+        if 0.1 <= reward < 1:
+            new_reward += 0.5
+        
+        # crossing a floor - between [1, 4]
+        if reward >= 1:
+            new_reward += (new_health / 10000)
+        
+        # found time orb / crossed a floor
+        if new_health > self._last_health:
+            new_reward += 0.5
+        
+        return new_reward
 
     def train(self):
         """ train the model """
         start_time = time.time()
 
         self.agent.restore_checkpoint()
-        
         mem = CuriosityMemory()
-        rewards = []
         running_reward = 0.
         best_score = 0.
         done = False
         obs = self.env.reset()
         state, _, _, _ = obs
 
-        agent_loss, feature_extractor_loss, forward_loss, inverse_loss = 0.0, 0.0, 0.0, 0.0
+        agent_loss, feature_extractor_loss, forward_loss, inverse_loss, loss = 0.0, 0.0, 0.0, 0.0, 0.0
         entropy_term = 0.0
         episode_reward = 0.0
         extrinsic_reward = 0.0
         episode_steps = 0
-        episode = 1
+        episode = 0
         timestep = 0
 
         while timestep <= self.timesteps:
+            i = 0
             with tf.GradientTape(persistent=True) as tape:
-                for i in range(self.batch_size):
+                while i < self.batch_size:
                     # collect experience
                     # get action as per policy
                     exp_state = tf.convert_to_tensor(state)
@@ -157,25 +157,33 @@ class CuriosityAgent():
                     entropy_term += entropy
                     
                     # choose most probable action
-                    action_index = np.random.choice(self.action_size, p=np.squeeze(policy))
+                    dist = tfp.distributions.Categorical(probs=policy, dtype=tf.float32)
+                    action_index = int(dist.sample().numpy())
                     action = self._action_lookup[action_index]
-                    action_one_hot = np.zeros(self.action_size, dtype=np.float32)
-                    action_one_hot[action_index] = 1
+
+                    action_one_hot = tf.one_hot(action_index, self.action_size)
                     action_one_hot = np.reshape(action_one_hot, (1, self.action_size))
                     
                     # perform action in game env
-                    obs, reward, done, _ = self.env.step(action)
-                    new_state, new_keys, new_health, cur_floor = obs
-                    reward = self.get_updated_reward(reward, new_health, new_keys, done)
-                    self._last_health = new_health
-                    self._last_keys = new_keys
+                    frame_reward = 0.0
+                    for _ in range(4):  # frame skipping
+                        obs, reward, done, _ = self.env.step(action)
+                        new_state, new_keys, new_health, cur_floor = obs
+                        reward = self.get_updated_reward(reward, new_health, new_keys, done)
+                        frame_reward += reward
+                        self._last_health = new_health
+                        self._last_keys = new_keys
+                        if cur_floor > self._last_floor:
+                            self._last_floor = cur_floor
+                        i += 1
+                        episode_steps += 1
+                        timestep += 1
                     
                     intrinsic_reward, state_features, new_state_features = self.agent.icm_act(state, new_state, action_one_hot, training=True)
-                    total_reward = self.ext_coeff * reward + self.int_coeff * intrinsic_reward
-                    extrinsic_reward += reward
+                    # total_reward = self.ext_coeff * reward + self.int_coeff * intrinsic_reward
+                    total_reward = frame_reward + intrinsic_reward
+                    extrinsic_reward += frame_reward
                     episode_reward += total_reward
-                    episode_steps += 1
-                    timestep += 1
                     
                     # store experience
                     mem.store(new_state,
@@ -183,26 +191,24 @@ class CuriosityAgent():
                                 done,
                                 value[0, 0],
                                 action_one_hot,
-                                policy[0, action_index],
+                                tf.math.log(policy[0, action_index]),
                                 state_features, # (1, 288)
                                 new_state_features)
                     
                     if done:
                         break
                 
-                ac_loss, feature_extractor_loss, forward_loss, inverse_loss = self.agent.compute_loss(mem, episode_reward, entropy_term)
+                ac_loss, forward_loss, inverse_loss, icm_loss = self.agent.compute_loss(mem, entropy_term)
             
-            self.update(tape, ac_loss, feature_extractor_loss, forward_loss, inverse_loss)
-            mem.clear()  # clear the experience
+            self.update(tape, ac_loss, forward_loss, inverse_loss, icm_loss)
+            mem.clear()
 
             if done:  # reset parameters and print episode statistics
-                rewards.append(extrinsic_reward)
-                running_reward = sum(rewards[-10:]) / 10
-                self.log_metrics(extrinsic_reward, running_reward, ac_loss, forward_loss, inverse_loss, feature_extractor_loss, episode)
-                print("Episode: {} | Average Reward: {:.3f} | Episode Reward: {:.3f} | AC Loss: {:.3f} | FE Loss: {:.3f} | FM Loss: {:.3f} | IM Loss: {:.3f} | Steps: {} | Total Steps: {}".format(
-                    episode, running_reward, extrinsic_reward, ac_loss, feature_extractor_loss, forward_loss, inverse_loss, episode_steps, timestep))
+                running_reward = (running_reward * episode + extrinsic_reward) / (episode + 1)
                 episode += 1
-
+                self.log_metrics(extrinsic_reward, running_reward, self._last_floor, ac_loss, forward_loss, inverse_loss, icm_loss, episode)
+                print("Episode: {} | Episode Reward: {:.3f} | Mean Reward: {:.3f} | AC Loss: {:.3f} | FM Loss: {:.3f} | IM Loss: {:.3f} | ICM Loss: {:.3f} | Floor: {} | Steps: {} | Total Steps: {}".format(
+                    episode, extrinsic_reward, running_reward, ac_loss, forward_loss, inverse_loss, icm_loss, self._last_floor, episode_steps, timestep))
                 obs = self.env.reset()
                 state, _, _, _ = obs
 
@@ -212,6 +218,9 @@ class CuriosityAgent():
                     self.agent.save_checkpoint()
                     self.save_model()
                 
+                self._last_health = 99999.
+                self._last_keys = 0
+                self._last_floor = 0
                 episode_reward = 0.0
                 extrinsic_reward = 0.0
                 episode_steps = 0

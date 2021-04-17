@@ -18,10 +18,11 @@ class TowerAgent(object):
         self.forward_model = ForwardModel()
         self.inverse_model = InverseModel(self.action_size)
         
-        self.ent_coeff = 0.001
+        self.gamma = 0.99
+        self.ent_coeff = 0.01
         self.eta = 0.1
         self.value_coeff = 0.5
-        self.beta = 0.2  # weighs the inverse model loss against the forward model loss
+        self.beta = 0.5  # weighs the inverse model loss against the forward model loss
         self.isc_lambda = 0.8  # weighs the importance of the policy gradient loss against the intrinsic reward signal
 
         # checkpointing
@@ -59,6 +60,7 @@ class TowerAgent(object):
 
     def mse_loss(self, y_true, y_pred):
         return tf.reduce_mean(tf.square(y_true - y_pred))
+        # return tf.keras.losses.MSE(y_true, y_pred).numpy()
         
     def act(self, state, training=False):
         """ get estimated policy and value """
@@ -83,25 +85,29 @@ class TowerAgent(object):
         
         action_one_hot = tf.cast(action_one_hot, tf.float32)
         pred_state_features = self.forward_model((state_features, action_one_hot))
-        intrinsic_reward = (self.eta / 2) * self.mse_loss(pred_state_features, new_state_features)
-        
+
+        prediction_error = 0.5 * tf.square(new_state_features - pred_state_features)
+        prediction_error = tf.reduce_mean(prediction_error) * 3136
+        intrinsic_reward = (self.eta / 2) * prediction_error
+        intrinsic_reward = tf.clip_by_value(intrinsic_reward, -0.1, 0.1)
+
         return intrinsic_reward, state_features, new_state_features
 
     def forward_act(self, batch_state_features, batch_action_indices):
+        """ predicts the features of the next state """
         batch_state_features = tf.cast(batch_state_features, tf.float32)
         batch_action_indices = tf.cast(batch_action_indices, tf.float32)
         return self.forward_model((batch_state_features, batch_action_indices))
 
     def inverse_act(self, batch_state_features, batch_new_state_features):
+        """ predicts the action performed """
         batch_state_features = tf.cast(batch_state_features, tf.float32)
         batch_new_state_features = tf.cast(batch_new_state_features, tf.float32)
         return self.inverse_model((batch_state_features, batch_new_state_features))
 
     def forward_loss(self, new_state_features, new_state_pred):
-        """
-        prediction error between predicted feature space and actual feature space of the state
-        """
-        forward_loss = self.mse_loss(new_state_pred, new_state_features)
+        """ prediction error between phi(s_t+1) and phi(s'_t+1) """
+        forward_loss = self.mse_loss(new_state_features, new_state_pred)
         return forward_loss
 
     def inverse_loss(self, pred_acts, action_indices):
@@ -114,40 +120,33 @@ class TowerAgent(object):
         return inverse_loss
 
     def actor_critic_loss(self, policy, values, returns, entropy):
-        actor_loss, critic_loss = 0.0, 0.0
-        alpha = 0.5
-        beta = 0.001
-        n = len(returns)
+        advantage = tf.math.subtract(returns, values)
+        # actor_loss = tf.math.reduce_mean(tf.clip_by_value(advantage * policy, -20.0, 20.0))
+        actor_loss = tf.math.reduce_mean(tf.stop_gradient(advantage) * policy)
+        critic_loss = tf.keras.losses.MSE(returns, values).numpy()
 
-        for policy, val, ret in zip(policy, values, returns):
-            advantage = ret - val
-            actor_loss = actor_loss + (-tf.math.log(tf.clip_by_value(policy, 1e-20, 1.0)) * advantage)
-            critic_loss = critic_loss + (advantage ** 2)
+        total_loss = actor_loss + self.value_coeff * critic_loss + self.ent_coeff * entropy
+        return total_loss  # negate it to perform gradient ascent
         
-        actor_loss = actor_loss / n
-        critic_loss = critic_loss / n
-        total_loss = actor_loss + alpha * critic_loss + beta * entropy
-        return total_loss
-    
-    def get_returns(self, rewards):
+    def get_returns(self, rewards, last_done, last_value):
         """
-        Calculate expected value from rewards
-        - At each timestep what was the total reward received after that timestep
-        - Rewards in the past are discounted by multiplying them with gamma
-        - These are the labels for our critic
+        calculate expected value from rewards. They are labels for the critic
         """
-        discounted_reward_sum = 0
-        gamma = 0.99
+        if last_done:  # game has terminated
+            discounted_reward_sum = 0.
+        else:  # bootstrap starting reward from last state
+            discounted_reward_sum = last_value
         returns = []
+
         for reward in rewards[::-1]:  # reverse buffer r
-            discounted_reward_sum = reward + gamma * discounted_reward_sum
+            discounted_reward_sum = reward + self.gamma * discounted_reward_sum
             returns.append(discounted_reward_sum)
         returns.reverse()
 
         return returns
     
-    def compute_loss(self, memory, episode_reward, entropy):
-        returns  = self.get_returns(memory.rewards)
+    def compute_loss(self, memory, entropy):
+        returns  = self.get_returns(memory.rewards, memory.dones[-1], memory.values[-1])
         
         policy_acts, new_value = self.act(np.stack(memory.frames))
         predicted_states = self.forward_act(
@@ -160,6 +159,6 @@ class TowerAgent(object):
         ac_loss = self.actor_critic_loss(memory.policy, memory.values, returns, entropy)
         forward_loss = self.forward_loss(memory.new_state_features, predicted_states)
         inverse_loss = self.inverse_loss(predicted_acts, memory.action_indices)
-        feature_extractor_loss = (1 - self.beta) * inverse_loss + self.beta * forward_loss
+        model_loss = self.beta * forward_loss + (1 - self.beta) * inverse_loss
 
-        return ac_loss, feature_extractor_loss, forward_loss, inverse_loss
+        return ac_loss, forward_loss, inverse_loss, model_loss

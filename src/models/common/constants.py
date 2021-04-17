@@ -4,7 +4,8 @@ train_env_reset_config = {
     "visual-theme": 0,  # default theme to remove generalization while training
     "agent-perspective": 0,
     "dense-reward": 1,
-    "starting-floor": 0
+    "starting-floor": 0,
+    "default-theme": 3
 }
 
 eval_env_reset_config = {
