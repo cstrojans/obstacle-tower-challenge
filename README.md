@@ -86,7 +86,31 @@ optional arguments:
                         Number of workers for asynchronous learning.
   --save-dir SAVE_DIR   Directory in which you desire to save the model.
 ```
-3. Curiosity Agent
+3. PPO Agent
+```
+usage: train.py ppo [-h] [--lr LR] [--max-eps MAX_EPS]
+                    [--update-freq UPDATE_FREQ] [--timesteps TIMESTEPS]
+                    [--batch-size BATCH_SIZE] [--gamma GAMMA]
+                    [--num-workers NUM_WORKERS] [--save-dir SAVE_DIR]
+                    [--plot PLOT]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --lr LR               Learning rate for the shared optimizer.
+  --max-eps MAX_EPS     Maximum number of episodes (games) to run.
+  --update-freq UPDATE_FREQ
+                        How often to update the global model.
+  --timesteps TIMESTEPS
+                        Maximum number of episodes (games) to run.
+  --batch-size BATCH_SIZE
+                        How often to update the global model.
+  --gamma GAMMA         Discount factor of rewards.
+  --num-workers NUM_WORKERS
+                        Number of workers for asynchronous learning.
+  --save-dir SAVE_DIR   Directory in which you desire to save the model.
+  --plot PLOT           Plot model results (rewards, loss, etc)
+```
+4. Curiosity Agent
 ```
 usage: train.py curiosity [-h] [--lr LR] [--timesteps TIMESTEPS] [--batch-size BATCH_SIZE] [--gamma GAMMA] [--save-dir SAVE_DIR]
 
@@ -99,6 +123,33 @@ optional arguments:
                         How often to update the global model.
   --gamma GAMMA         Discount factor of rewards.
   --save-dir SAVE_DIR   Directory in which you desire to save the model.
+```
+5. Stable A2C Agent
+```
+usage: train.py stable_a2c [-h] [--timesteps TIMESTEPS] [--policy-name POLICY_NAME] [--save-dir SAVE_DIR] [--continue-training]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --timesteps TIMESTEPS
+                        Number of timesteps to train the PPO agent for.
+  --policy-name POLICY_NAME
+                        Policy to train for the PPO agent.
+  --save-dir SAVE_DIR   Directory in which you desire to save the model.
+  --continue-training   Continue training the previously trained model.
+```
+6. Stable PPO Agent 
+```
+usage: train.py stable_ppo [-h] [--timesteps TIMESTEPS] [--policy-name POLICY_NAME] [--save-dir SAVE_DIR] [--continue-training] [--reduced-action]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --timesteps TIMESTEPS
+                        Number of timesteps to train the PPO agent for.
+  --policy-name POLICY_NAME
+                        Policy to train for the PPO agent.
+  --save-dir SAVE_DIR   Directory in which you desire to save the model.
+  --continue-training   Continue training the previously trained model.
+  --reduced-action      Use a reduced set of actions for training
 ```
 ### Commands
 To train the agent:
@@ -114,7 +165,7 @@ tensorboard --logdir logs/
 To play a game with a trained agent:
 ```
 # play an episode of the game using a given policy (random or a3c)
-python src/play.py --env <PATH_TO_OTC_GAME> --algorithm random
+python play.py --env <PATH_TO_OTC_GAME> --algorithm random
 
 # evaluate a given agent
 python play.py --env <PATH_TO_OTC_GAME> --algorithm random --evaluate
