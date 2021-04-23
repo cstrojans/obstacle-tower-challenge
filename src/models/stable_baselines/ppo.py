@@ -49,7 +49,7 @@ class StablePPO():
         if not continue_training:
             print("Initializing from scratch")
             model = PPO(self.policy_name, self.env, verbose=1,
-                        tensorboard_log=self.log_dir)
+                        tensorboard_log=self.log_dir, n_steps=6144, n_epochs=4)
         else:
             model = self.load_model()
             print("Restored from {}".format(self.model_path))
