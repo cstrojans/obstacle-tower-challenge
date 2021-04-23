@@ -256,9 +256,10 @@ class Worker(threading.Thread):
 
         return reward
     
-    def log_worker_metrics(self, episode_reward, loss, step):
+    def log_worker_metrics(self, episode_reward, avg_reward, loss, step):
         with self.worker_summary_writer.as_default():
             tf.summary.scalar('reward', episode_reward, step=step)
+            tf.summary.scalar('moving_reward', avg_reward, step=step)
             tf.summary.scalar('loss', loss, step=step)
             self.worker_summary_writer.flush()
 
@@ -329,7 +330,7 @@ class Worker(threading.Thread):
                 rewards.append(ep_reward)
                 Worker.running_reward = sum(rewards[-10:]) / 10
 
-                self.log_worker_metrics(ep_reward, ep_loss, ep_count)
+                self.log_worker_metrics(ep_reward, Worker.running_reward, ep_loss, ep_count)
                 print("Episode: {} | Average Reward: {:.3f} | Episode Reward: {:.3f} | Loss: {:.3f} | Steps: {} | Total Steps: {} | Worker: {}".format(
                     Worker.episode_count, Worker.running_reward, ep_reward, ep_loss, ep_steps, Worker.global_steps, 1))
                 self.result_queue.put((Worker.running_reward, total_loss))
@@ -343,7 +344,7 @@ class Worker(threading.Thread):
                 if ep_reward > Worker.best_score:
                     with Worker.save_lock:
                         print('\nSaving best model to: {}, episode score: {}\n'.format(self.model_path, ep_reward))
-                        keras.models.save_model(self.global_model, self.model_path)
+                        keras.models.save_model(self.local_model, self.model_path)
                         Worker.best_score = ep_reward
                 
                 entropy_term = 0
@@ -351,5 +352,6 @@ class Worker(threading.Thread):
                 ep_steps = 0
                 ep_loss = 0.
         
+        keras.models.save_model(self.local_model, self.model_path)
         self.result_queue.put(None)
         self.env.close()

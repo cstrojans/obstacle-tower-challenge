@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 from tensorflow.python import keras
-from tensorflow.python.keras import layers
+from tensorflow.keras import layers
 
 
 class CnnGru(keras.Model):
@@ -13,7 +13,7 @@ class CnnGru(keras.Model):
 
         # CNN - spatial dependencies
         # (20, 20, 32)
-        self.conv1 = layers.Conv2D(filters=16,
+        self.conv1 = layers.Conv2D(filters=32,
                                    kernel_size=(8, 8),
                                    strides=(4, 4),
                                    activation=tf.keras.activations.relu,
@@ -21,33 +21,35 @@ class CnnGru(keras.Model):
                                    input_shape=self.ip_shape
                                    )
         self.bn1 = layers.BatchNormalization()
+        self.pool1 = layers.MaxPool2D(pool_size=(2, 2))
 
         # (9, 9, 64)
-        self.conv2 = layers.Conv2D(filters=32,
+        self.conv2 = layers.Conv2D(filters=64,
                                    kernel_size=(4, 4),
                                    strides=(2, 2),
                                    activation=tf.keras.activations.relu,
                                    data_format='channels_last'
                                    )
         self.bn2 = layers.BatchNormalization()
+        self.pool2 = layers.MaxPool2D(pool_size=(2, 2))
 
         # (7, 7, 64)
-        self.conv3 = layers.Conv2D(filters=32,
-                                   kernel_size=(3, 3),
-                                   strides=(1, 1),
-                                   activation=tf.keras.activations.relu,
-                                   data_format='channels_last'
-                                   )
-        self.bn3 = layers.BatchNormalization()
+        # self.conv3 = layers.Conv2D(filters=64,
+        #                            kernel_size=(3, 3),
+        #                            strides=(1, 1),
+        #                            activation=tf.keras.activations.relu,
+        #                            data_format='channels_last'
+        #                            )
+        # self.bn3 = layers.BatchNormalization()
 
         # reshape
         self.flatten = layers.Flatten()
-        self.fc1 = layers.Dense(units=256,
+        self.fc1 = layers.Dense(units=512,
                                 activation=tf.keras.activations.relu
                                 )
 
         # RNN - temporal dependencies
-        self.gru = layers.LSTM(256)
+        self.gru = layers.GRU(512, activation=tf.keras.activations.tanh)
 
         # policy output layer (Actor)
         self.policy_logits = layers.Dense(units=self.action_size, activation=tf.nn.softmax, name='policy_logits')
@@ -57,17 +59,22 @@ class CnnGru(keras.Model):
 
     @tf.function
     def call(self, inputs, training=False):
-        # converts RGB image to grayscale
-        # x = tf.image.rgb_to_grayscale(inputs)
-        x = inputs / 255.0
-        x = self.conv1(x)
+        state, rem_time = inputs[0], inputs[1]
+        # state = state / 255.0
+        x = tf.image.rgb_to_grayscale(state)
+        rem_time = tf.expand_dims(tf.expand_dims(rem_time, axis=0), axis=1)  # (1, 1)
+        
+        x = self.conv1(state)
         x = self.bn1(x, training=training)
+        x = self.pool1(x)
         x = self.conv2(x)
         x = self.bn2(x, training=training)
-        x = self.conv3(x)
-        x = self.bn3(x, training=training)
+        x = self.pool2(x)
+        # x = self.conv3(x)
+        # x = self.bn3(x, training=training)
 
-        x = self.flatten(x)
+        x = self.flatten(x)  # (1, 3136)
+        x = tf.concat([x, rem_time], axis=1)  # (1, 3137)
         x = self.fc1(x)
 
         # input: [batch, timesteps, feature]
@@ -86,18 +93,11 @@ class CnnGru(keras.Model):
         - Rewards in the past are discounted by multiplying them with gamma
         - These are the labels for our critic
         """
-
-        """
         if done:  # game has terminated
             discounted_reward_sum = 0.
         else:  # bootstrap starting reward from last state
-            last_state = tf.convert_to_tensor(last_state)
-            last_state = tf.expand_dims(last_state, axis=0)
-            _, critic_value = self.call(last_state)
-            discounted_reward_sum = critic_value[0, 0]
-        """
+            discounted_reward_sum = memory.critic_value_history[-1]
 
-        discounted_reward_sum = 0
         returns = []
         for reward in memory.rewards_history[::-1]:  # reverse buffer r
             discounted_reward_sum = reward + gamma * discounted_reward_sum
@@ -107,22 +107,16 @@ class CnnGru(keras.Model):
     
     def compute_loss(self, memory, last_state, done, gamma, eps, entropy):
         """ calculate actor and critic loss """
-        alpha = 0.5
-        beta = 0.001
+        value_coeff = 0.5
+        entropy_coeff = 0.01
         returns = self.get_returns(memory, last_state, done, gamma, eps)
-        actor_loss, critic_loss = 0.0, 0.0
-        history = zip(memory.action_probs_history, memory.critic_value_history, returns)
-        n = len(returns)
 
-        for action_prob, value, ret in history:
-            # advantage: how much better it is to take a specific action compared to 
-            # the average, general action at the given state.
-            advantage = ret - value
-            actor_loss = actor_loss + (-tf.math.log(action_prob) * advantage)
-            critic_loss = critic_loss + (advantage ** 2)
+        # advantage: 
+        # how much better it is to take a specific action compared to 
+        # the average, general action at the given state.
+        advantage = tf.math.subtract(returns, memory.critic_value_history)
+        actor_loss = tf.math.reduce_mean(tf.stop_gradient(advantage) * memory.action_probs_history)
+        critic_loss = tf.keras.losses.MSE(returns, memory.critic_value_history).numpy()
 
-        actor_loss = actor_loss / n
-        critic_loss = critic_loss / n
-        total_loss = actor_loss + alpha * critic_loss + beta * entropy
-        
-        return total_loss
+        total_loss = actor_loss + value_coeff * critic_loss + entropy_coeff * entropy        
+        return -total_loss  # negate it to perform gradient ascent

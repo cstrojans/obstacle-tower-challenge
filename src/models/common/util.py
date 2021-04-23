@@ -130,8 +130,7 @@ class ActionSpace:
             }
         ]
 
-    """
-    def get_action_meaning(self, action):
+    def get_full_action_meaning(self, action):
         # with retro=False
         action_permutation = self.all_actions[action]
         return "[{}, {}, {}, {}]".format(
@@ -140,7 +139,6 @@ class ActionSpace:
             self.actions[2][action_permutation[2]],
             self.actions[3][action_permutation[3]]
         )
-    """
 
     def get_action_meaning(self, action):
         # with retro=False

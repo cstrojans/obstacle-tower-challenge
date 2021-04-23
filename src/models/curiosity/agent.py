@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import tensorflow as tf
 from tensorflow.keras import Model, layers, activations, losses
 from tensorflow.keras.layers import Layer
@@ -6,8 +7,8 @@ from models.curiosity.networks import ConvGruNet, FeatureExtractor, ForwardModel
 
 
 class TowerAgent(object):
-    """ ICM model/network which is trained """
-    def __init__(self, action_size, ip_shape=(84, 84, 3)):
+    """ Agent that learns using intrinsic curiosity model (ICM) """
+    def __init__(self, action_size=7, ip_shape=(84, 84, 3)):
         super(TowerAgent, self).__init__()
         self.action_size = action_size
         self.ip_shape = ip_shape
@@ -20,9 +21,42 @@ class TowerAgent(object):
         self.ent_coeff = 0.001
         self.eta = 0.1
         self.value_coeff = 0.5
-        self.beta = 0.8
-        self.isc_lambda = 0.8
+        self.beta = 0.2  # weighs the inverse model loss against the forward model loss
+        self.isc_lambda = 0.8  # weighs the importance of the policy gradient loss against the intrinsic reward signal
+
+        # checkpointing
+        self.ac_ckpt = tf.train.Checkpoint(model=self.actor_critic_model, step=tf.Variable(1))
+        self.fe_ckpt = tf.train.Checkpoint(model=self.feature_extractor, step=tf.Variable(1))
+        self.fm_ckpt = tf.train.Checkpoint(model=self.forward_model, step=tf.Variable(1))
+        self.im_ckpt = tf.train.Checkpoint(model=self.inverse_model, step=tf.Variable(1))
+        
+        self.ac_manager = tf.train.CheckpointManager(self.ac_ckpt, directory='./checkpoints/model-curiosity/ac_ckpts', max_to_keep=3)
+        self.fe_manager = tf.train.CheckpointManager(self.fe_ckpt, directory='./checkpoints/model-curiosity/fe_ckpts', max_to_keep=3)
+        self.fm_manager = tf.train.CheckpointManager(self.fm_ckpt, directory='./checkpoints/model-curiosity/fm_ckpts', max_to_keep=3)
+        self.im_manager = tf.train.CheckpointManager(self.im_ckpt, directory='./checkpoints/model-curiosity/im_ckpts', max_to_keep=3)
     
+    def save_checkpoint(self):
+        self.ac_manager.save()
+        self.fe_manager.save()
+        self.fm_manager.save()
+        self.im_manager.save()
+
+        print("Saved checkpoint for step {}".format(int(self.ac_ckpt.step)))
+        self.ac_ckpt.step.assign_add(1)
+        self.fe_ckpt.step.assign_add(1)
+        self.fm_ckpt.step.assign_add(1)
+        self.im_ckpt.step.assign_add(1)
+
+    def restore_checkpoint(self):
+        if self.ac_manager.latest_checkpoint:
+            self.ac_ckpt.restore(self.ac_manager.latest_checkpoint)
+            self.fe_ckpt.restore(self.fe_manager.latest_checkpoint)
+            self.fm_ckpt.restore(self.fm_manager.latest_checkpoint)
+            self.im_ckpt.restore(self.im_manager.latest_checkpoint)
+            print("Restored from {}".format(self.ac_manager.latest_checkpoint))
+        else:
+            print("Initializing from scratch.")
+
     def mse_loss(self, y_true, y_pred):
         return tf.reduce_mean(tf.square(y_true - y_pred))
         
@@ -74,11 +108,9 @@ class TowerAgent(object):
         """
         logits = output of inverse model - before softmax is applied
         aindex = one-hot encoding from memory
-        self.invloss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=aindex), name="invloss")
         """
         action_indices = tf.concat(action_indices, axis=0)
-        cross_entropy_loss = tf.keras.losses.CategoricalCrossentropy()
-        inverse_loss = cross_entropy_loss(action_indices, pred_acts)
+        inverse_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=pred_acts, labels=action_indices))
         return inverse_loss
 
     def actor_critic_loss(self, policy, values, returns, entropy):
@@ -128,8 +160,6 @@ class TowerAgent(object):
         ac_loss = self.actor_critic_loss(memory.policy, memory.values, returns, entropy)
         forward_loss = self.forward_loss(memory.new_state_features, predicted_states)
         inverse_loss = self.inverse_loss(predicted_acts, memory.action_indices)
+        feature_extractor_loss = (1 - self.beta) * inverse_loss + self.beta * forward_loss
 
-        agent_loss = self.isc_lambda * ac_loss + (1 - self.beta) * inverse_loss + self.beta * forward_loss
-        # print("Loss Values:\nAC Loss = {}\nEntropy = {}\nForward Loss = {}\nInverse Loss = {}\nAgent Loss = {}\n".format(
-        #     ac_loss, entropy, forward_loss, inverse_loss, agent_loss))
-        return ac_loss, agent_loss, forward_loss, inverse_loss
+        return ac_loss, feature_extractor_loss, forward_loss, inverse_loss

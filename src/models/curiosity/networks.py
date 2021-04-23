@@ -187,7 +187,7 @@ class InverseModel(Model):
                                      # activation=layers.LeakyReLU(alpha=0.01)
                                      activation=tf.keras.activations.relu
                                      )
-        self.op = layers.Dense(units=action_size, activation=tf.nn.softmax)
+        self.op = layers.Dense(units=action_size)
 
     @tf.function
     def call(self, inputs):

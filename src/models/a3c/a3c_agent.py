@@ -9,6 +9,7 @@ import os
 from prettyprinter import pprint
 from queue import Queue
 import tensorflow as tf
+import tensorflow_probability as tfp
 import tensorboard
 from tensorflow import keras
 import threading
@@ -34,15 +35,16 @@ class MasterAgent():
             os.makedirs(save_dir)
 
         self.env_path = env_path
-        self.action_size = 7
+        self.action_size = 8
         self._action_lookup = {  # action space from fourth place winner
-            0: np.asarray([1, 0, 0, 0]),  # forward
-            1: np.asarray([2, 0, 0, 0]),  # backward
-            2: np.asarray([0, 1, 0, 0]),  # cam left
-            3: np.asarray([0, 2, 0, 0]),  # cam right
-            4: np.asarray([1, 0, 1, 0]),  # forward + jump
-            5: np.asarray([1, 1, 0, 0]),  # forward + cam left
-            6: np.asarray([1, 2, 0, 0]),  # forward + cam right
+            0: np.asarray([0, 0, 0, 0]),  # no-op
+            1: np.asarray([1, 0, 0, 0]),  # forward
+            2: np.asarray([2, 0, 0, 0]),  # backward
+            3: np.asarray([0, 1, 0, 0]),  # cam left
+            4: np.asarray([0, 2, 0, 0]),  # cam right
+            5: np.asarray([1, 0, 1, 0]),  # forward + jump
+            6: np.asarray([1, 1, 0, 0]),  # forward + cam left
+            7: np.asarray([1, 2, 0, 0]),  # forward + cam right
         }
 
         self.num_workers = multiprocessing.cpu_count() if num_workers == 0 else num_workers
@@ -59,29 +61,40 @@ class MasterAgent():
         # self.global_model = CNN(self.action_size, self.input_shape)
         self.global_model = CnnGru(self.action_size, self.input_shape)
 
+        # checkpointing
+        self.ac_ckpt = tf.train.Checkpoint(model=self.global_model, step=tf.Variable(1))
+        self.ac_manager = tf.train.CheckpointManager(self.ac_ckpt, directory='./checkpoints/model-a3c/ckpts', max_to_keep=3)
+
         self.current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         train_log_dir = './logs/' + self.current_time + '/a3c/master'
         self.master_summary_writer = tf.summary.create_file_writer(train_log_dir)
 
-        lr_schedule = keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=self.lr, decay_steps=1000, decay_rate=0.9)
-        self.opt = keras.optimizers.Adam(learning_rate=lr_schedule, epsilon=1e-05)
+        lr_schedule = keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=self.lr, decay_steps=10000, decay_rate=0.9)
+        self.opt = keras.optimizers.Adam(learning_rate=lr_schedule, epsilon=1e-04)
 
+        if self.ac_manager.latest_checkpoint:
+            self.ac_ckpt.restore(self.ac_manager.latest_checkpoint)
+            print("Restored from {}".format(self.ac_manager.latest_checkpoint))
+        else:
+            print("Initializing from scratch.")
         vec = np.random.random(self.input_shape)  # (84, 84, 3)
         vec = np.expand_dims(vec, axis=0)  # (1, 84, 84, 3)
-        self.global_model(tf.convert_to_tensor(vec, dtype=tf.float32), training=True)
+        self.global_model([tf.convert_to_tensor(vec, dtype=tf.float32), 3000.0], training=True)
 
     def build_graph(self):
         """ build the model architecture """
-        x = keras.Input(shape=(84, 84, 3))
-        model = keras.Model(inputs=[x], outputs=self.global_model.call(x))
+        state = keras.Input(shape=(84, 84, 3))
+        rem_time = keras.Input((1,))
+        model = keras.Model(inputs=[state, rem_time], outputs=self.global_model.call([state, 3000.0]))
         keras.utils.plot_model(model, to_file=os.path.join(
-            self.save_dir, 'model_a3c_architecture.png'), dpi=96, show_shapes=True, show_layer_names=True, expand_nested=False)
+            self.save_dir, 'model_a3c_architecture.png'), dpi=96, show_shapes=True, show_layer_names=True, expand_nested=True)
         return model
 
     def log_master_metrics(self, avg_reward, loss, step):
         with self.master_summary_writer.as_default():
-            tf.summary.scalar('moving_average_reward', avg_reward, step=step)
-            tf.summary.scalar('loss', loss, step=step)
+            with tf.name_scope('master'):
+                tf.summary.scalar('mean_reward', avg_reward, step=step)
+                tf.summary.scalar('loss', loss, step=step)
             self.master_summary_writer.flush()
 
     def train(self):
@@ -96,6 +109,8 @@ class MasterAgent():
             'lr': self.lr,
             'optimizer': self.opt,
             'global_model': self.global_model,
+            'ckpt': self.ac_ckpt,
+            'ckpt_mgr': self.ac_manager,
             'master_summary_writer': self.master_summary_writer,
             'log_timestamp': self.current_time,
             'action_size': self.action_size,
@@ -111,7 +126,7 @@ class MasterAgent():
             worker.start()
 
         # record episode reward to plot
-        moving_average_rewards = []
+        mean_rewards = []
         losses = []
         i = 0
         while True:
@@ -125,7 +140,7 @@ class MasterAgent():
                 break
             else:
                 self.log_master_metrics(reward, loss, i)
-                moving_average_rewards.append(reward)
+                mean_rewards.append(reward)
                 losses.append(loss)
         
         for w in workers:
@@ -136,8 +151,12 @@ class MasterAgent():
             end_time - start_time))
 
         # save the trained model to a file
-        # print('Saving global model to: {}'.format(self.model_path))
-        # keras.models.save_model(self.global_model, self.model_path)
+        self.ac_manager.save()
+        print("Saved checkpoint for step {}".format(int(self.ac_ckpt.step)))
+        self.ac_ckpt.step.assign_add(1)
+
+        keras.models.save_model(self.global_model, self.model_path)
+        print('Saved global model to: {}'.format(self.model_path))
 
         self.env.close()
 
@@ -151,18 +170,19 @@ class MasterAgent():
         step_counter = 0
         reward_sum = 0
         obs = self.env.reset()
-        state, _, _, _ = obs
+        state, keys, health, floor = obs
 
         try:
             while not done:
-                policy, _ = model(tf.convert_to_tensor(
-                    np.expand_dims(state, axis=0), dtype=tf.float32))
+                state = tf.convert_to_tensor(state)
+                state = tf.expand_dims(state, axis=0)
+                policy, _ = model([state, float(health)])
                 action_index = np.random.choice(self.action_size, p=np.squeeze(policy))
                 action = self._action_lookup[action_index]
 
                 for i in range(4): # frame skipping
                     obs, reward, done, _ = self.env.step(action)
-                    state, _, _, _ = obs
+                    state, keys, health, floor = obs
                     reward_sum += reward
                     step_counter += 1
                 
@@ -191,7 +211,7 @@ class MasterAgent():
 
 class Worker(threading.Thread):
     episode_count = 0
-    running_reward = 0
+    mean_reward = 0
     best_score = 0
     global_steps = 0
     save_lock = threading.Lock()
@@ -216,6 +236,9 @@ class Worker(threading.Thread):
         # self.local_model = CNN(self.action_size, self.input_shape)
         self.local_model = CnnGru(self.action_size, self.input_shape)
         
+        self.ac_ckpt = params['ckpt']
+        self.ac_manager = params['ckpt_mgr']
+        
         self.current_time = params['log_timestamp']
         train_log_dir = './logs/' + self.current_time + '/worker_' + str(self.worker_idx)
         self.worker_summary_writer = tf.summary.create_file_writer(train_log_dir)
@@ -229,77 +252,77 @@ class Worker(threading.Thread):
 
     def get_updated_reward(self, reward, new_health, new_keys, done):
         new_health = float(new_health)
-        if done:  # penalize when game is terminated
+        new_reward = 0.0
+        if done:  # reset params when game is terminated
             self._last_health = 99999.
             self._last_keys = 0
-            reward = -1
         else:
-            # crossing a floor- between [1, 4]
+            # opened a door, solved a puzzle, picked up a key
+            if 0.1 <= reward < 1:
+                new_reward += 0.5
+            
+            # crossing a floor - between [1, 4]
             if reward >= 1:
-                reward += (new_health / 10000)
+                new_reward += (new_health / 10000)
             
             # found time orb / crossed a floor
             if new_health > self._last_health:
-                reward += 0.1
+                new_reward += 0.5
 
-            # found a key
-            if new_keys > self._last_keys:
-                reward += 0.1
-
-        return reward
+        return new_reward
 
     def log_worker_metrics(self, episode_reward, loss, step):
         with self.worker_summary_writer.as_default():
-            tf.summary.scalar('reward', episode_reward, step=step)
-            tf.summary.scalar('loss', loss, step=step)
+            with tf.name_scope('worker'):
+                tf.summary.scalar('reward', episode_reward, step=step)
+                tf.summary.scalar('loss', loss, step=step)
             self.worker_summary_writer.flush()
 
     def run(self):
         mem = Memory()
-        rewards = []
-        ep_count = 1
+        ep_count = 0
         timestep = 0
         entropy_term = 0
         ep_reward = 0.
         ep_steps = 0
         ep_loss = 0.
-
+        
         done = False
         obs = self.env.reset()
-        state, _, _, _ = obs
+        state, self._last_keys, self._last_health, _ = obs
 
         while timestep <= self.timesteps:
+            i = 0
             with tf.GradientTape() as tape:
-                for i in range(self.batch_size):
+                while i < self.batch_size:
                     # collect experience
                     # get action as per policy
                     state = tf.convert_to_tensor(state)
                     state = tf.expand_dims(state, axis=0)
-                    action_probs, critic_value = self.local_model(state, training=True)
+                    action_probs, critic_value = self.local_model([state, float(self._last_health)], training=True)
 
                     entropy = -np.sum(action_probs * np.log(action_probs))
                     entropy_term += entropy
 
                     # choose most probable action
-                    action_index = np.random.choice(
-                        self.action_size, p=np.squeeze(action_probs))
+                    dist = tfp.distributions.Categorical(probs=action_probs, dtype=tf.float32)
+                    action_index = int(dist.sample().numpy())
                     action = self._action_lookup[action_index]
 
                     # perform action in game env
                     for i in range(4): # frame skipping
                         obs, reward, done, _ = self.env.step(action)
                         state, new_keys, new_health, cur_floor = obs
-                        
                         reward = self.get_updated_reward(reward, new_health, new_keys, done)
                         self._last_health = new_health
                         self._last_keys = new_keys
-                        
                         ep_reward += reward
                         ep_steps += 1
+                        i += 1
                         timestep += 1
 
                     # store experience
-                    mem.store(action_prob=action_probs[0, action_index],
+                    mem.store(action_prob=tf.math.log(action_probs[0, action_index]),
                               value=critic_value[0, 0],
                               reward=reward)
 
@@ -317,13 +340,12 @@ class Worker(threading.Thread):
             mem.clear()
             
             if done:
-                rewards.append(ep_reward)
-                Worker.running_reward = sum(rewards[-10:]) / 10
+                Worker.mean_reward = (Worker.mean_reward * Worker.episode_count + ep_reward) / (Worker.episode_count + 1)
 
                 self.log_worker_metrics(ep_reward, ep_loss, ep_count)
-                print("Episode: {} | Average Reward: {:.3f} | Episode Reward: {:.3f} | Loss: {:.3f} | Steps: {} | Total Steps: {} | Worker: {}".format(
-                    Worker.episode_count, Worker.running_reward, ep_reward, ep_loss, ep_steps, Worker.global_steps, self.worker_idx))
-                self.result_queue.put((Worker.running_reward, total_loss))
+                print("Episode: {} | Mean Reward: {:.3f} | Episode Reward: {:.3f} | Loss: {:.3f} | Steps: {} | Total Steps: {} | Worker: {}".format(
+                    Worker.episode_count, Worker.mean_reward, ep_reward, ep_loss, ep_steps, Worker.global_steps, self.worker_idx))
+                self.result_queue.put((Worker.mean_reward, total_loss))
                 Worker.episode_count += 1
                 ep_count += 1
 
@@ -333,8 +355,12 @@ class Worker(threading.Thread):
                 # use a lock to save local model and to print to prevent data races.
                 if ep_reward > Worker.best_score:
                     with Worker.save_lock:
-                        print('\nSaving best model to: {}, episode score: {}\n'.format(self.model_path, ep_reward))
+                        self.ac_manager.save()
+                        print("Saved checkpoint for step {}".format(int(self.ac_ckpt.step)))
+                        self.ac_ckpt.step.assign_add(1)
+
                         keras.models.save_model(self.global_model, self.model_path)
+                        print('\nSaved best model to: {}, episode score: {}\n'.format(self.model_path, ep_reward))
                         Worker.best_score = ep_reward
                 
                 entropy_term = 0
