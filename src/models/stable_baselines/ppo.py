@@ -1,15 +1,13 @@
 from prettyprinter import pprint
 import os
 import time
-from obstacle_tower_env import ObstacleTowerEnv, ObstacleTowerEvaluation
-from models.common.constants import train_env_reset_config, eval_env_reset_config
 from models.common.util import ActionSpace
 from stable_baselines3 import PPO
 from stable_baselines3.common.evaluation import evaluate_policy
 
 
 class StablePPO():
-    def __init__(self, env_path, train, evaluate, policy_name='CnnPolicy', save_dir='./model_files/', eval_seeds=[]):
+    def __init__(self, env_path, train, evaluate, policy_name='CnnPolicy', save_dir='./model_files/', eval_seeds=[], reduced_action=False):
         self.save_dir = save_dir
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
@@ -18,7 +16,15 @@ class StablePPO():
         self.log_dir = './logs/stable_ppo'
         self.policy_name = policy_name
         self.evaluate = evaluate
-
+        print(env_path)
+        if reduced_action:
+            from obstacle_tower_env import ObstacleTowerEnv, ObstacleTowerEvaluation
+            from models.common.constants import train_env_reset_config_industrial as train_env_reset_config
+            from models.common.constants import eval_env_reset_config_industrial as eval_env_reset_config
+        else:
+            from models.stable_baselines.reduced_action_env import ObstacleTowerEnv, ObstacleTowerEvaluation
+            from models.common.constants import train_env_reset_config, eval_env_reset_config
+        
         if train:
             self.env = ObstacleTowerEnv(
                 env_path, worker_id=0, retro=True, realtime_mode=False, config=train_env_reset_config)

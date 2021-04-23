@@ -51,6 +51,7 @@ if __name__ == '__main__':
     parser_e.add_argument('--policy-name', default='CnnPolicy', type=str, help='Policy to train for the PPO agent.')
     parser_e.add_argument('--save-dir', default='./model_files/', type=str, help='Directory in which you desire to save the model.')
     parser_e.add_argument('--continue-training', default=False, action='store_true', help='Continue training the previously trained model.')
+    parser_e.add_argument('--reduced-action', default=False, action='store_true', help='Use a reduced set of actions for training')
 
     args, argv = parser.parse_known_args(sys.argv[1:])
     print(args)
@@ -92,7 +93,7 @@ if __name__ == '__main__':
     elif args.subparser_name == 'stable_ppo':
         from models.stable_baselines.ppo import StablePPO
         assert args.policy_name in ['MlpPolicy', 'CnnPolicy']
-        agent = StablePPO(env_path=args.env, train=True, evaluate=False, policy_name=args.policy_name, save_dir=args.save_dir)
+        agent = StablePPO(env_path=args.env, train=True, evaluate=False, policy_name=args.policy_name, save_dir=args.save_dir, reduced_action=args.reduced_action)
         agent.train(args.timesteps, args.continue_training)
     
     else:
