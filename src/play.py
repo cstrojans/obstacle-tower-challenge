@@ -14,6 +14,7 @@ if __name__ == '__main__':
                         help='Choose between \'random\', \'a3c\', \'stable_a2c\', \'stable_ppo\', and \'curiosity\'.')
     parser.add_argument('--save-dir', default='./model_files/', type=str,
                         help='Directory from where you wish to load the model.')
+    parser.add_argument('--reduced-action', default=False, action='store_true', help='Use a reduced set of actions for training')
     args = parser.parse_args()
     print(args)
 
@@ -41,7 +42,7 @@ if __name__ == '__main__':
     
     elif args.algorithm == 'stable_ppo':
         from models.stable_baselines.ppo import StablePPO
-        agent = StablePPO(env_path=args.env, train=False, evaluate=args.evaluate, policy_name='', save_dir=args.save_dir, eval_seeds=eval_seeds)
+        agent = StablePPO(env_path=args.env, train=False, evaluate=args.evaluate, policy_name='', save_dir=args.save_dir, eval_seeds=eval_seeds, reduced_action=args.reduced_action)
     
     elif args.algorithm == 'ppo':
         from models.ppo.ppo_agent import MasterAgent
