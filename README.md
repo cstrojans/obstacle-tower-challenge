@@ -50,6 +50,17 @@ env = ObstacleTowerEnv(retro=False, realtime_mode=False)
 | Windows        | https://storage.googleapis.com/obstacle-tower-build/v4.1/obstacletower_v4.1_windows.zip |
 
 
+## Quick Setup - Docker
+
+You can use <a href="https://www.docker.com/">Docker</a> to perform a quick setup on a virtual machine. The base image is Docker's <a href="https://hub.docker.com/_/ubuntu">Ubuntu Image</a>. The following libraries and packages are installed on the machine as part of Docker quickstart:
+<ul>
+  <li>GCC compiler toolset</li>
+  <li>Python 3.8 and PIP</li>
+  <li>Git</li>
+  <li>All other dependencies for this game <a href="requirements.txt">here</a></li>
+</ul>
+Note: The image is successfully built, but faces trouble with display drivers when we attempt to train the agent. We will continue to work on this item in the future.
+
 ## Game details
 
 The environment provided has a MultiDiscrete action space (list of valid actions), where the 4 dimensions are: MultiDiscrete([3 3 2 3])
