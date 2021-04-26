@@ -241,48 +241,33 @@ In addition to developing model networks and architectures, implementation level
 
 \section{Results and Analysis}
 
-We have successfully trained 4 models so far using the A3C, Curiosity, Distributed Tensorflow, and PPO models. They have been trained for a couple of million timesteps and we have achieved impressive results.
+\subsection{A3C results}
 
-Looking at the loss graphs in Fig. \ref{a3c_cnn_result} and Fig. \ref{a3c_gru_result}, we learn that since these algorithms are on-policy, they need a huge amount of training to develop a meaningful policy. Although the training done so far is fairly limited, we see a steady improvement in the collected rewards. Spikes in the loss function mean that the algorithm is exploring new trajectories which is consistent with expected results of initial training for the models.
+Until the midterm, we had trained the A3C model for 100 episodes totalling ~70k timesteps. Looking at the loss graphs we learn that since these algorithms are on-policy, they need a huge amount of training to develop a meaningful policy. Although the training done so far is fairly limited, we see a steady improvement in the collected rewards. Spikes in the loss function mean that the algorithm is exploring new trajectories which is consistent with expected results of initial training for the models. In the graphs for the A3C models below, we see a maximum reward of 0.6 which is reached very early in the training period with a gradual degradation later on. In terms of gameplay, we noticed that over multiple test runs the agent resorted to repeating the same action repeatedly leading it to run into walls and getting stuck, or running around in circles. The agent occasionally crossed the first floor, albeit purely by stochastic actions. It was not able to cross a single floor with a learned policy/strategy.
 
-\begin{figure}[h!]
-    \centering
-    \includegraphics[width=\linewidth]{a3c_cnn_result.png}
-    \caption{A3C CNN Model Results}
-    \label{a3c_cnn_result}
-\end{figure}
+Post the midterm, we focused efforts on prolonged training to see if we can get improved gameplay. As seen in Fig. 15, we trained the A3C model for ~8.5M timesteps, which took close to 24 hours of training using a single NVidia GTX 1650 GPU. Even with prolonged training time, we hit a ceiling of 0.6 on the mean reward at ~1.5M timesteps. This led to the conclusion that the sample efficiency of A3C is poor, and that alternate models need to be tried. 
 
-\begin{figure}[h!]
-    \centering
-    \includegraphics[width=\linewidth]{a3c_gru_result.png}
-    \caption{A3C CNN+GRU Model Results}
-    \label{a3c_gru_result}
-\end{figure}
+\subsection{Curiosity Results}
 
-In the reward graphs for the A3C models, we see a maximum reward of 0.6 which is reached very early in the training period with a gradual degradation later on. As per Fig. \ref{ppo_cnn_result} and Fig. \ref{ppo_gru_result}, the PPO model performs better in terms of registering lower loss values and showing fewer loss spikes. But, the overall score achieved is lesser.
+The ICM introduced a solution to help the agent learn better from its environment by supplying it with an “intrinsic” reward with each state. This mechanism promoted the agent to explore the floor map better and try different actions. A clear advantage of using this model was that the agent no longer got stuck running into walls. This model too required long training times in order to learn a meaningful strategy. In Fig. 16 we can see the loss curve of each of the components in ICM along with the mean reward. When trained for ~100k timesteps, the agent was able to cross only 1 floor. When trained for 1M timesteps (as seen in Fig. 17), the agent was able to gain more rewards as compared to the A3C model and was also able to cross ~2 floors.
 
-\begin{figure}[h!]
-    \centering
-    \includegraphics[width=\linewidth]{ppo_cnn_results.png}
-    \caption{PPO CNN Model Results}
-    \label{ppo_cnn_result}
-\end{figure}
+\subsection{PPO Results}
 
-\begin{figure}[h!]
-    \centering
-    \includegraphics[width=\linewidth]{ppo_gru_results.png}
-    \caption{PPO CNN+GRU Model Results}
-    \label{ppo_gru_result}
-\end{figure}
+Before the midterm, our PPO model was able to get a mean reward of 0.15 with a decreasing loss curve. This meant that the agent was unable to cross even the first floor. We attributed this result to smaller training time and complexity of our game. 
 
-An interesting insight from the distributed training in Fig. \ref{multi_worker_graph} using thread-based parallelism shows that although we get a significant performance improvement from using multiple workers, as seen in the below graph, we reach optimal performance using 4 workers. This is against the idea that more workers means faster training. A hypothesis behind a decrease after this may be due to the increased inter-thread communication cost that happens during synchronization of weights with the master/global agent network. To put this in perspective, all the workers were created in threads on the same local machine.
+Post midterm, we used stable-baselines’ implementation PPO for training our model. We trained models with varied parameters and environment themes for 2M - 10M timesteps. This allowed us to tune our hyperparameters for the environment and get the best performance out of our agent. 
 
-\begin{figure}[h!]
-    \centering
-    \includegraphics[width=\linewidth]{multi_worker.png}
-    \caption{Distributed Model Training}
-    \label{multi_worker_graph}
-\end{figure}
+Initially our model was trained with the default parameters in stable-baselines’ PPO implementation. We used stable-baselines’ CnnPolicy to train the model. Both without and with a reduced action space, our model was able to reach a mean episode reward of 3.5 in ~5M timesteps. Our agent was able to cross 2 floors with ease and sometimes crossed the 3rd floor. This is a significant improvement over our pre-midterm results where our model was not able to cross even a single floor with certainty.
+
+To further improve the performance of our agent, we looked into similar approaches by the challenge contestants [15]. We trained our model on the “industrial” theme of the environment. The agent was able to perform much better in this theme because it is easier to differentiate between objects in the environment. 
+
+Further, we experimented with different learning rates, clip coefficients, number of epochs and length of horizon for PPO. We noticed that the reduced number of epochs not only improved training time, but also helped improve agent performance. Increasing the length of horizon to 4096 timesteps helped in the learning process too. We also used a modified reduced action space of 10 actions as shown in Table 4. 
+
+With hyperparameter tuning, we were able to double the performance of our agent with our final agent being able to reach a mean episode reward of 6.8. This suggested that it crosses 4 levels with ease and sometimes crosses the 5th level. This shows our agent is able to navigate through different rooms in the floor and find the door that leads to the next floor. It also notices and collects time orbs which give it additional time to explore the floor. 
+
+\subsection{Distributed Training}
+
+An interesting insight from the distributed training using thread-based parallelism shows that although we get a significant performance improvement from using multiple workers, as seen in the below graph, we reach optimal performance using 4 workers. This is against the idea that more workers means faster training. A hypothesis behind a decrease may be due to the increased inter-thread communication cost that happens during synchronization of weights with the master/global agent network. To put this in perspective, all the workers were created in threads on the same local machine. 
 
 \section{Limitations}
 
@@ -330,13 +315,21 @@ Most of the competitors and the winners of Obstacle Tower Challenge have trained
 \subsection{\textbf{Training on a cluster of GPU's}}
 The most significant improvement we want to see, is not just longer training, but longer training in a short period of time. That is where GPU's come into the picture. We have distributed tensorflow setup ready, and we are seeking to get our hands on a cluster of GPU's (or any other high-end processor suited for machine learning, such as a TPU), so that we can get extremely positive results in a short period of time.
 
+\subsection{\textbf{Other alternatives}}
+\begin{enumerate}
+    \item Behavior cloning along with game feature detection to mimic a human player.
+    \item Transfer learning to encode states into a concise feature space.
+    \item Hierarchical RL techniques where different policies are learnt for higher order goals and for lower-level actions.
+    \item Asynchronous learning architecture using sample-factory
+\end{enumerate}
+
 \section{Conclusions}
 
-As is evident from the discussion, our agent currently is able to take intelligent actions that allow it to progress in the game. Our initial goal was to cross two levels of the Obstacle Tower, but to our surprise, we have successfully crossed 5 levels! By implementing the tasks present in Future Work section, we are planning on beating the state-of-the-art model for Unity's Obstacle Tower Challenge.
+As is evident from the discussion, our agent currently is able to take intelligent actions that allow it to progress in the game. Our initial goal was to cross two levels of the Obstacle Tower, but to our surprise, we have successfully crossed 5 levels! While A3C was a test to see how a baseline on-policy algorithm performed on the game, ICM was a novel approach that wasn’t previously applied to a game of this setting. Although the ICM model overcame issues faced with A3C, it was not able to cross many floors. One reason to account for this could be that there is significant literature on ICM’s performance in 2D environments, but not a lot for 3D environments. Our best performing agent is trained using PPO and achieves a mean reward of 6.8. By implementing the tasks present in Future Work section, we are planning on beating the state-of-the-art model for Unity's Obstacle Tower Challenge.
 
 \section{Acknowledgement}
 
-We would like to thank Professor Dr. Michael Zyda and the TA's for allowing us to work on this project.
+We would like to thank Professor Dr. Michael Zyda and the TA's for allowing us to work on this project and for providing us constant support throughout the course by delivering relevant lectures.
 
 \begin{thebibliography}{00}
 \bibitem{Juliani-et-al} Juliani, Arthur \& Khalifa, Ahmed \& Berges, Vincent-Pierre \& Harper, Jonathan \& Teng, Ervin \& Henry, Hunter \& Crespi, Adam \& Togelius, Julian \& Lange, Danny. (2019). Obstacle Tower: A Generalization Challenge in Vision, Control, and Planning. 2684-2691. 10.24963/ijcai.2019/373.
