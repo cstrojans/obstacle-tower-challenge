@@ -52,6 +52,10 @@ env = ObstacleTowerEnv(retro=False, realtime_mode=False)
 
 ## Quick Setup - Docker
 
+<div align="center">
+  <img src="https://www.docker.com/sites/default/files/d8/styles/role_icon/public/2019-07/horizontal-logo-monochromatic-white.png?itok=SBlK2TGU">
+</div>
+
 You can use <a href="https://www.docker.com/">Docker</a> to perform a quick setup on a virtual machine. The base image is Docker's <a href="https://hub.docker.com/_/ubuntu">Ubuntu Image</a>. The following libraries and packages are installed on the machine as part of Docker quickstart:
 <ul>
   <li>GCC compiler toolset</li>
@@ -162,6 +166,28 @@ optional arguments:
   --continue-training   Continue training the previously trained model.
   --reduced-action      Use a reduced set of actions for training
 ```
+## Distributed Tensorflow
+
+<div align="center">
+  <img src="https://www.tensorflow.org/images/tf_logo_social.png">
+</div>
+
+[TensorFlow](https://www.tensorflow.org/) is an end-to-end open source platform
+for machine learning. It has a comprehensive, flexible ecosystem of
+[tools](https://www.tensorflow.org/resources/tools),
+[libraries](https://www.tensorflow.org/resources/libraries-extensions), and
+[community](https://www.tensorflow.org/community) resources that lets
+researchers push the state-of-the-art in ML and developers easily build and
+deploy ML-powered applications.
+
+We have used <a href="https://www.tensorflow.org/api_docs/python/tf/distribute/MirroredStrategy">tf.distribute.MirroredStrategy</a> to explore distributed tensorflow library, and noticed that we can only leverage the utility of this library if we have access to a farm of GPU clusters. Our future work will focus on cloud training, along with experimentation of the following strategies:
+<ul>
+  <li><a href="https://www.tensorflow.org/api_docs/python/tf/distribute/TPUStrategy">tf.distribute.TPUStrategy</a></li>
+  <li><a href="https://www.tensorflow.org/api_docs/python/tf/distribute/MultiWorkerMirroredStrategy">tf.distribute.MultiWorkerMirroredStrategy</a></li>
+  <li><a href="https://www.tensorflow.org/guide/distributed_training#parameterserverstrategy">tf.distribute.experimental.ParameterServerStrategy</a></li>
+  <li><a href="https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/CentralStorageStrategy">tf.distribute.experimental.CentralStorageStrategy</a></li>
+</ul>
+
 ### Commands
 To train the agent:
 ```bash
