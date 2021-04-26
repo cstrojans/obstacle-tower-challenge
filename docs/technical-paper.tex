@@ -187,6 +187,27 @@ The primary hyper-parameters used by both models have been defined in Table \ref
     \label{hyperparam_table}
 \end{table}
 
+\subsection{\textbf{Distributed Tensorflow}}
+
+Tensorflow is a library/framework developed by Google, Inc. It allows everyday-developers to train, test, and deploy their models effortlessly. We have used tf.distribute.MirroredStrategy, which allows synchronous training over several replicas present on one machine (physical or virtual.) As mentioned in the Future Work section, we are planning on using MultiWorkerMirroredStrategy, ParameterServerStrategy, and several other strategies available for training distributed models using distributed tensorflow. We also trained the MirroredStrategy model on a GPU machine, and are looking forward to train it on a cluster of GPU's.
+
+\subsection{\textbf{Curiosity based learning}}
+
+One of the biggest challenges to RL algorithms is the problem of sparse rewards. Most external rewards that an agent gets from the environment are extremely sparse. This leads to difficulty in training where the agent has to try a huge number of trajectories before it finally finds a one that it can converge on. This leads to training time overhead. Some methods to counter this issue use tricks like reward shaping which only work well for specific environments. Most agents trained using reward shaping do not generalise well to new levels/tasks. 
+
+Curiosity provides an intrinsic reward signal that helps agents explore the environment. Pathak-et-al \cite{Pathak-et-al} defines curiosity as “an error in the agent’s ability to predict the consequence of its own actions”. Their curiosity formulation helps the agent take into account things that affect it and ignore the ones that do not. They investigated three curiosity categories:
+
+No extrinsic reward: the agent trained on curiosity is able to explore the environment better
+Generalization: the agent trained on other levels of the games is asked to play a completely unseen level. The idea is for the agent to be able to use its previous experiences to explore the environment better
+
+
+\begin{itemize}
+\item Sparse extrinsic reward: the agent trained on curiosity takes fewer steps to reach the goal
+\item No extrinsic reward: the agent trained on curiosity is able to explore the environment better
+\item Generalization: the agent trained on other levels of the games is asked to play a completely unseen level.
+The idea is for the agent to be able to use its previous experiences to explore the environment better
+\end{itemize}
+
 \subsection{\textbf{Implementation Tactics}}
 
 In addition to developing model networks and architectures, implementation level strategies have also been tried to tweak the models to train better and faster.
@@ -195,6 +216,8 @@ In addition to developing model networks and architectures, implementation level
     \item \textbf{Action Space Reduction}: Large action spaces lead to large branching factors which leads to poor decision taking abilities in the agent. Fewer actions led to smaller branching factor leading to faster actions and better training decisions. In our implementation, we reduced the action space from 54 to 7. Our approach to choosing actions was to choose only those action combinations that are natural for a human to perform. In addition to this, we also fixed the floor generation seed and set the "visual-theme" parameter to 0. This makes sure that only the default theme is in place thereby removing generalization. 
     \item \textbf{Retro Mode}: Our game comes with a mode called "Retro". In this mode, the supplemental information like number of keys in possession, time remaining and current floor are embedded inside the image. By setting the retro mode to False, the code was refactored to make sure the image is no longer embedded with the data and we receive the data separately as a tuple. This removes the issue of having to use computer vision and OCR to extract the data.
     \item \textbf{Updated Rewards}: Extrinsic rewards were updated to prioritize collection of keys, time orbs and crossing of floors. This trains the agent to focus on these tasks and penalizes it when it performs anything else. The updated extrinsic reward scheme can been seen in Table \ref{reward_table}.
+    \item \textbf{Docker}: The bottleneck in training longer, to achieve better results, is the number of machines available for training. Oftentimes, the key aspect of achieving exceptional machine learning results, is software engineering. In other words, we must have a robust way to setup all the tools and libraries required for training our model on a bare machine. This can be accomplished by using Docker. Docker provides Dockerfile, which is a declarative way to setup all the software required for training our model on a bare machine. We have tried using Docker to setup our software on a cloud machine in an intuitive Write-Once-Run-Anywhere approach, but we are yet to resolve some final issues pertaining to display drivers and running Unity's obstacle tower environment in an headless manner.
+    \item \textbf{Miscellaneous}: Some of the other implementation techniques which we have tried and explored are: Observation Normalization, Frame Stacking, Frame Skipping, Grayscale image instead of RGB, and Extrinsic reward shaping.
 \end{enumerate}
 
 \begin{table}[h!]
@@ -218,48 +241,33 @@ In addition to developing model networks and architectures, implementation level
 
 \section{Results and Analysis}
 
-We have successfully trained 2 models so far using the A3C and PPO models. Each of the models have been trained for 100 game episodes totalling $\sim70,000$ timesteps.
+\subsection{A3C results}
 
-Looking at the loss graphs in Fig. \ref{a3c_cnn_result} and Fig. \ref{a3c_gru_result}, we learn that since these algorithms are on-policy, they need a huge amount of training to develop a meaningful policy. Although the training done so far is fairly limited, we see a steady improvement in the collected rewards. Spikes in the loss function mean that the algorithm is exploring new trajectories which is consistent with expected results of initial training for the models.
+Until the midterm, we had trained the A3C model for 100 episodes totalling ~70k timesteps. Looking at the loss graphs we learn that since these algorithms are on-policy, they need a huge amount of training to develop a meaningful policy. Although the training done so far is fairly limited, we see a steady improvement in the collected rewards. Spikes in the loss function mean that the algorithm is exploring new trajectories which is consistent with expected results of initial training for the models. In the graphs for the A3C models below, we see a maximum reward of 0.6 which is reached very early in the training period with a gradual degradation later on. In terms of gameplay, we noticed that over multiple test runs the agent resorted to repeating the same action repeatedly leading it to run into walls and getting stuck, or running around in circles. The agent occasionally crossed the first floor, albeit purely by stochastic actions. It was not able to cross a single floor with a learned policy/strategy.
 
-\begin{figure}[h!]
-    \centering
-    \includegraphics[width=\linewidth]{a3c_cnn_result.png}
-    \caption{A3C CNN Model Results}
-    \label{a3c_cnn_result}
-\end{figure}
+Post the midterm, we focused efforts on prolonged training to see if we can get improved gameplay. As seen in Fig. 15, we trained the A3C model for ~8.5M timesteps, which took close to 24 hours of training using a single NVidia GTX 1650 GPU. Even with prolonged training time, we hit a ceiling of 0.6 on the mean reward at ~1.5M timesteps. This led to the conclusion that the sample efficiency of A3C is poor, and that alternate models need to be tried. 
 
-\begin{figure}[h!]
-    \centering
-    \includegraphics[width=\linewidth]{a3c_gru_result.png}
-    \caption{A3C CNN+GRU Model Results}
-    \label{a3c_gru_result}
-\end{figure}
+\subsection{Curiosity Results}
 
-In the reward graphs for the A3C models, we see a maximum reward of 0.6 which is reached very early in the training period with a gradual degradation later on. As per Fig. \ref{ppo_cnn_result} and Fig. \ref{ppo_gru_result}, the PPO model performs better in terms of registering lower loss values and showing fewer loss spikes. But, the overall score achieved is lesser.
+The ICM introduced a solution to help the agent learn better from its environment by supplying it with an “intrinsic” reward with each state. This mechanism promoted the agent to explore the floor map better and try different actions. A clear advantage of using this model was that the agent no longer got stuck running into walls. This model too required long training times in order to learn a meaningful strategy. In Fig. 16 we can see the loss curve of each of the components in ICM along with the mean reward. When trained for ~100k timesteps, the agent was able to cross only 1 floor. When trained for 1M timesteps (as seen in Fig. 17), the agent was able to gain more rewards as compared to the A3C model and was also able to cross ~2 floors.
 
-\begin{figure}[h!]
-    \centering
-    \includegraphics[width=\linewidth]{ppo_cnn_results.png}
-    \caption{PPO CNN Model Results}
-    \label{ppo_cnn_result}
-\end{figure}
+\subsection{PPO Results}
 
-\begin{figure}[h!]
-    \centering
-    \includegraphics[width=\linewidth]{ppo_gru_results.png}
-    \caption{PPO CNN+GRU Model Results}
-    \label{ppo_gru_result}
-\end{figure}
+Before the midterm, our PPO model was able to get a mean reward of 0.15 with a decreasing loss curve. This meant that the agent was unable to cross even the first floor. We attributed this result to smaller training time and complexity of our game. 
 
-An interesting insight from the distributed training in Fig. \ref{multi_worker_graph} using thread-based parallelism shows that although we get a significant performance improvement from using multiple workers, as seen in the below graph, we reach optimal performance using 4 workers. This is against the idea that more workers means faster training. A hypothesis behind a decrease after this may be due to the increased inter-thread communication cost that happens during synchronization of weights with the master/global agent network. To put this in perspective, all the workers were created in threads on the same local machine. We expect to achieve better performance with distributed tensorflow which will enable us to employ more than 1 machine.
+Post midterm, we used stable-baselines’ implementation PPO for training our model. We trained models with varied parameters and environment themes for 2M - 10M timesteps. This allowed us to tune our hyperparameters for the environment and get the best performance out of our agent. 
 
-\begin{figure}[h!]
-    \centering
-    \includegraphics[width=\linewidth]{multi_worker.png}
-    \caption{Distributed Model Training}
-    \label{multi_worker_graph}
-\end{figure}
+Initially our model was trained with the default parameters in stable-baselines’ PPO implementation. We used stable-baselines’ CnnPolicy to train the model. Both without and with a reduced action space, our model was able to reach a mean episode reward of 3.5 in ~5M timesteps. Our agent was able to cross 2 floors with ease and sometimes crossed the 3rd floor. This is a significant improvement over our pre-midterm results where our model was not able to cross even a single floor with certainty.
+
+To further improve the performance of our agent, we looked into similar approaches by the challenge contestants [15]. We trained our model on the “industrial” theme of the environment. The agent was able to perform much better in this theme because it is easier to differentiate between objects in the environment. 
+
+Further, we experimented with different learning rates, clip coefficients, number of epochs and length of horizon for PPO. We noticed that the reduced number of epochs not only improved training time, but also helped improve agent performance. Increasing the length of horizon to 4096 timesteps helped in the learning process too. We also used a modified reduced action space of 10 actions as shown in Table 4. 
+
+With hyperparameter tuning, we were able to double the performance of our agent with our final agent being able to reach a mean episode reward of 6.8. This suggested that it crosses 4 levels with ease and sometimes crosses the 5th level. This shows our agent is able to navigate through different rooms in the floor and find the door that leads to the next floor. It also notices and collects time orbs which give it additional time to explore the floor. 
+
+\subsection{Distributed Training}
+
+An interesting insight from the distributed training using thread-based parallelism shows that although we get a significant performance improvement from using multiple workers, as seen in the below graph, we reach optimal performance using 4 workers. This is against the idea that more workers means faster training. A hypothesis behind a decrease may be due to the increased inter-thread communication cost that happens during synchronization of weights with the master/global agent network. To put this in perspective, all the workers were created in threads on the same local machine. 
 
 \section{Limitations}
 
@@ -295,30 +303,6 @@ The way reinforcement learning models the problem requires several conditions:
 
 \section{Future Work}
 
-\subsection{\textbf{Curiosity based learning}}
-
-One of the biggest challenges to RL algorithms is the problem of sparse rewards. Most external rewards that an agent gets from the environment are extremely sparse. This leads to difficulty in training where the agent has to try a huge number of trajectories before it finally finds a one that it can converge on. This leads to training time overhead. Some methods to counter this issue use tricks like reward shaping which only work well for specific environments. Most agents trained using reward shaping do not generalise well to new levels/tasks. 
-
-Curiosity provides an intrinsic reward signal that helps agents explore the environment. Pathak-et-al \cite{Pathak-et-al} defines curiosity as “an error in the agent’s ability to predict the consequence of its own actions”. Their curiosity formulation helps the agent take into account things that affect it and ignore the ones that do not. They investigated three curiosity categories:
-
-No extrinsic reward: the agent trained on curiosity is able to explore the environment better
-Generalization: the agent trained on other levels of the games is asked to play a completely unseen level. The idea is for the agent to be able to use its previous experiences to explore the environment better
-
-
-\begin{itemize}
-\item Sparse extrinsic reward: the agent trained on curiosity takes fewer steps to reach the goal
-\item No extrinsic reward: the agent trained on curiosity is able to explore the environment better
-\item Generalization: the agent trained on other levels of the games is asked to play a completely unseen level.
-The idea is for the agent to be able to use its previous experiences to explore the environment better
-\end{itemize}
-
-\subsection{\textbf{Distributed Tensorflow}}
-
-Using distributed training, we can train very large models and speed up training time. Tensorflow provides a high-end API to train your models in a distributed way with minimal code changes.  Two types of paradigms used for distributed training:
-Data Parallelism: Models are replicated into different devices (GPU) and trained on batches of data.
-Model Parallelism: Models are too large to fit on a single device and are distributed over many devices.
-We will be investigating utilization of distributed tensorflow so that we can train our agents faster and tighten the developer feedback loop.
-
 \subsection{\textbf{IMPALA}}
 
 IMPALA \cite{Espeholt-et-al} is an efficient and quick way of performing a huge number of tasks with only one reinforcement learning agent and only one set of parameters. By handling resources more efficiently in  single machine training, IMPALA can be extended to work on multiple machines without jeopardizing data efficiency. With the use of an off-policy correction method called V-trace together with disjoint acting and learning, consistent learning at high throughput is achieved.
@@ -326,15 +310,26 @@ IMPALA \cite{Espeholt-et-al} is an efficient and quick way of performing a huge 
 Without compromising on training stability and data efficiency, IMPALA can scale to thousands of machines. Instead of communicating gradients with the learners as in A3C, the workers send a tuple(state sequence, action, rewards) to a centralized learner. A GPU is used to perform updates on small batches of these tuples or rather trajectories, and simultaneously parallely perform all operations that do not depend on other operations; this is because the learner is the one with complete access to all such tuples. Due to this decoupled architecture, IMPALA is known to have great efficiency. The only challenge in this algorithm is to make sure that the trajectory generation policy is not lagging behind the learner in terms of the updates when the gradient is being calibrated. Therefore the learning becomes off policy. To appropriately resolve this discrepancy,  V-trace off-policy actor-critic algorithm comes into the picture. Below is a picture of the formula for V-trace.
 
 \subsection{\textbf{Longer Training}}
-Most of the competitors and the winners of Obstacle Tower Challenge have trained for significantly longer timesteps to obtain optimal results for the agent. In the remaining half of the semester our goal is to reach 5 million timesteps for training.
+Most of the competitors and the winners of Obstacle Tower Challenge have trained for significantly longer timesteps to obtain optimal results for the agent. As an extension, our goal is to reach 20 million timesteps for training.
+
+\subsection{\textbf{Training on a cluster of GPU's}}
+The most significant improvement we want to see, is not just longer training, but longer training in a short period of time. That is where GPU's come into the picture. We have distributed tensorflow setup ready, and we are seeking to get our hands on a cluster of GPU's (or any other high-end processor suited for machine learning, such as a TPU), so that we can get extremely positive results in a short period of time.
+
+\subsection{\textbf{Other alternatives}}
+\begin{enumerate}
+    \item Behavior cloning along with game feature detection to mimic a human player.
+    \item Transfer learning to encode states into a concise feature space.
+    \item Hierarchical RL techniques where different policies are learnt for higher order goals and for lower-level actions.
+    \item Asynchronous learning architecture using sample-factory
+\end{enumerate}
 
 \section{Conclusions}
 
-As is evident from the discussion, our agent currently is able to take actions that allow it to progress in the game. However, these are still early days, and with the introduction of distributed training, IMPALA, Curiosity-based learning, etc, our agent will be able to take many optimal decisions and we are expecting it to go past several levels in the Obstacle Tower.
+As is evident from the discussion, our agent currently is able to take intelligent actions that allow it to progress in the game. Our initial goal was to cross two levels of the Obstacle Tower, but to our surprise, we have successfully crossed 5 levels! While A3C was a test to see how a baseline on-policy algorithm performed on the game, ICM was a novel approach that wasn’t previously applied to a game of this setting. Although the ICM model overcame issues faced with A3C, it was not able to cross many floors. One reason to account for this could be that there is significant literature on ICM’s performance in 2D environments, but not a lot for 3D environments. Our best performing agent is trained using PPO and achieves a mean reward of 6.8. By implementing the tasks present in Future Work section, we are planning on beating the state-of-the-art model for Unity's Obstacle Tower Challenge.
 
 \section{Acknowledgement}
 
-We would like to thank Professor Dr. Michael Zyda and the TA's for allowing us to work on this project.
+We would like to thank Professor Dr. Michael Zyda and the TA's for allowing us to work on this project and for providing us constant support throughout the course by delivering relevant lectures.
 
 \begin{thebibliography}{00}
 \bibitem{Juliani-et-al} Juliani, Arthur \& Khalifa, Ahmed \& Berges, Vincent-Pierre \& Harper, Jonathan \& Teng, Ervin \& Henry, Hunter \& Crespi, Adam \& Togelius, Julian \& Lange, Danny. (2019). Obstacle Tower: A Generalization Challenge in Vision, Control, and Planning. 2684-2691. 10.24963/ijcai.2019/373.
