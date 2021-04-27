@@ -161,8 +161,8 @@ def record(episode, episode_reward, worker_idx, global_ep_reward, result_queue, 
         total_loss: The total loss accumualted over the current episode
         num_steps: The number of steps the episode took to complete
     """
-    print("Episode: {} | Average Reward: {:.3f} | Episode Reward: {:.3f} | Loss: {:.3f} | Steps: {} | Total Steps: {} | Worker: {}".format(
-        episode, global_ep_reward, episode_reward, total_loss, ep_steps, global_steps, worker_idx))
+    # print("Episode: {} | Average Reward: {:.3f} | Episode Reward: {:.3f} | Loss: {:.3f} | Steps: {} | Total Steps: {} | Worker: {}".format(
+    #     episode, global_ep_reward, episode_reward, total_loss, ep_steps, global_steps, worker_idx))
     result_queue.put((global_ep_reward, total_loss))
 
 

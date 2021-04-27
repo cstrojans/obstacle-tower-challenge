@@ -4,7 +4,7 @@ import tensorflow_probability as tfp
 import math
 from tensorflow.python import keras
 from tensorflow.python.keras import layers
-from models.util import normalized_columns_initializer
+# from models.util import normalized_columns_initializer
 
 
 class CnnGru(keras.Model):
