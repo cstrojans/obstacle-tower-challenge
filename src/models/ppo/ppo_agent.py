@@ -54,13 +54,13 @@ class MasterAgent():
         self.timesteps = timesteps
         self.batch_size = batch_size
         self.gamma = gamma
-        self.model_path = os.path.join(self.save_dir, 'model_a3c')
+        self.model_path = os.path.join(self.save_dir, 'model_ppo')
         
         # self.global_model = CNN(self.action_size, self.input_shape)
         self.global_model = CnnGru(self.action_size, self.input_shape)
 
         self.current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        train_log_dir = './logs/' + self.current_time + '/a3c/master'
+        train_log_dir = './logs/' + self.current_time + '/ppo/master'
         self.master_summary_writer = tf.summary.create_file_writer(train_log_dir)
 
         lr_schedule = keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=self.lr, decay_steps=1000, decay_rate=0.9)
@@ -75,7 +75,7 @@ class MasterAgent():
         x = keras.Input(shape=(84, 84, 3))
         model = keras.Model(inputs=[x], outputs=self.global_model.call(x))
         keras.utils.plot_model(model, to_file=os.path.join(
-            self.save_dir, 'model_a3c_architecture.png'), dpi=96, show_shapes=True, show_layer_names=True, expand_nested=False)
+            self.save_dir, 'model_ppo_architecture.png'), dpi=96, show_shapes=True, show_layer_names=True, expand_nested=False)
         return model
 
     def log_master_metrics(self, avg_reward, loss, step):
@@ -201,7 +201,7 @@ class Worker(threading.Thread):
         self.result_queue = result_queue
         self.worker_idx = idx
         self.save_dir = save_dir
-        self.model_path = os.path.join(self.save_dir, 'model_a3c')
+        self.model_path = os.path.join(self.save_dir, 'model_ppo')
 
         self.env = ObstacleTowerEnv(params['env_path'], worker_id=self.worker_idx,
                                     retro=False, realtime_mode=False, greyscale=False, config=train_env_reset_config)

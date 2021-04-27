@@ -36,7 +36,7 @@ class MasterAgent():
 
         self.env_path = env_path
         self.action_size = 8
-        self._action_lookup = {  # action space from fourth place winner
+        self._action_lookup = {
             0: np.asarray([0, 0, 0, 0]),  # no-op
             1: np.asarray([1, 0, 0, 0]),  # forward
             2: np.asarray([2, 0, 0, 0]),  # backward
